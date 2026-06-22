@@ -1,4 +1,3 @@
-import sys
 from abc import ABC, abstractmethod
 from threading import RLock
 from typing import Any, Awaitable, Dict, List, Optional, Union
@@ -76,64 +75,17 @@ class AbstractToken(ABC):
         cancelled_flag = 'cancelled' if self.is_cancelled(direct=False) else 'not cancelled'
         return f'<{type(self).__name__} ({cancelled_flag})>'
 
-    def __add__(self, item: 'AbstractToken') -> 'AbstractToken':  # noqa: PLR0911
+    def __add__(self, item: 'AbstractToken') -> 'AbstractToken':
         if not isinstance(item, AbstractToken):
-            raise TypeError('Cancellation Token can only be combined with another Cancellation Token.')
+            raise TypeError(
+                'Cancellation Token can only be combined with another Cancellation Token.',
+            )
 
-        from cantok import DefaultToken, SimpleToken, TimeoutToken  # noqa: PLC0415
+        from cantok import DefaultToken, SimpleToken  # noqa: PLC0415
 
-        if self._cancelled or item._cancelled:
-            return SimpleToken(cancelled=True)
-
-        nested_tokens = []
-        container_token: Optional[AbstractToken] = None
-
-        # Inspect the caller's frame to determine if a token is "temporary"
-        # (not stored in any variable). This is robust across all Python versions,
-        # unlike refcount-based detection which varies with bytecode optimizations.
-        _frame = sys._getframe(1)
-        _caller_locals = list(_frame.f_locals.values())
-        _caller_globals = list(_frame.f_globals.values())
-
-        def is_temp(token: 'AbstractToken') -> bool:
-            for v in _caller_locals:
-                if v is token:
-                    return False
-            return all(v is not token for v in _caller_globals)
-
-        _self_is_temp = is_temp(self)
-        _item_is_temp = is_temp(item)
-
-        if isinstance(self, TimeoutToken) and isinstance(item, TimeoutToken) and self._monotonic == item._monotonic:
-            if self._deadline >= item._deadline and _self_is_temp:
-                if _item_is_temp:
-                    item._tokens.extend(self._tokens)
-                    return item
-                if self._tokens:
-                    return SimpleToken(*(self._tokens), item)
-                return item
-            if self._deadline < item._deadline and _item_is_temp:
-                if _self_is_temp:
-                    self._tokens.extend(item._tokens)
-                    return self
-                if item._tokens:
-                    return SimpleToken(*(item._tokens), self)
-                return self
-
-        for token in self, item:
-            if isinstance(token, SimpleToken) and is_temp(token):
-                nested_tokens.extend(token._tokens)
-            elif isinstance(token, DefaultToken):
-                pass
-            elif not isinstance(token, SimpleToken) and is_temp(token) and container_token is None:
-                container_token = token
-            else:
-                nested_tokens.append(token)
-
-        if container_token is None:
-            return SimpleToken(*nested_tokens)
-        container_token._tokens.extend(container_token._filter_tokens(nested_tokens))
-        return container_token
+        return SimpleToken(
+            *[token for token in (self, item) if not isinstance(token, DefaultToken)],
+        )
 
     def __bool__(self) -> bool:
         return self.keep_on()
