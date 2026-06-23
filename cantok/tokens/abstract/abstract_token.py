@@ -88,11 +88,9 @@ class AbstractToken(ABC):
                 'Cancellation Token can only be combined with another Cancellation Token.',
             )
 
-        from cantok import DefaultToken, SimpleToken  # noqa: PLC0415
+        from cantok import SimpleToken  # noqa: PLC0415
 
-        return SimpleToken(
-            *[token for token in (self, item) if not isinstance(token, DefaultToken)],
-        )
+        return SimpleToken(self, item)
 
     def __bool__(self) -> bool:
         return self.keep_on()
