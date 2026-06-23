@@ -224,35 +224,7 @@ def test_decrement_counter_after_zero():
     assert token.counter == 0
 
 
-def test_quasitemp_counter_token_plus_temp_simple_token():
-    token = CounterToken(0) + SimpleToken()
-
-    assert isinstance(token, CounterToken)
-    assert len(token._tokens) == 0
-
-
-def test_not_quasitemp_counter_token_plus_temp_simple_token():
-    counter_token = CounterToken(1)
-    token = counter_token + SimpleToken()
-
-    assert isinstance(token, SimpleToken)
-    assert len(token._tokens) == 1
-    assert isinstance(token._tokens[0], CounterToken)
-    assert token._tokens[0] is counter_token
-
-
-def test_quasitemp_counter_token_plus_not_temp_simple_token():
-    simple_token = SimpleToken()
-    token = CounterToken(1) + simple_token
-
-    assert isinstance(token, CounterToken)
-    assert token is not simple_token
-    assert len(token._tokens) == 1
-    assert isinstance(token._tokens[0], SimpleToken)
-    assert token._tokens[0] is simple_token
-
-
-def test_not_quasitemp_counter_token_plus_not_temp_simple_token():
+def test_counter_token_plus_simple_token():
     simple_token = SimpleToken()
     counter_token = CounterToken(1)
     token = counter_token + simple_token
@@ -265,35 +237,7 @@ def test_not_quasitemp_counter_token_plus_not_temp_simple_token():
     assert token._tokens[1] is simple_token
 
 
-def test_quasitemp_counter_token_plus_temp_simple_token_reverse():
-    token = SimpleToken() + CounterToken(1)
-
-    assert isinstance(token, CounterToken)
-    assert len(token._tokens) == 0
-
-
-def test_not_quasitemp_counter_token_plus_temp_simple_token_reverse():
-    counter_token = CounterToken(1)
-    token = SimpleToken() + counter_token
-
-    assert isinstance(token, SimpleToken)
-    assert len(token._tokens) == 1
-    assert isinstance(token._tokens[0], CounterToken)
-    assert token._tokens[0] is counter_token
-
-
-def test_quasitemp_counter_token_plus_not_temp_simple_token_reverse():
-    simple_token = SimpleToken()
-    token = simple_token + CounterToken(1)
-
-    assert isinstance(token, CounterToken)
-    assert token is not simple_token
-    assert len(token._tokens) == 1
-    assert isinstance(token._tokens[0], SimpleToken)
-    assert token._tokens[0] is simple_token
-
-
-def test_not_quasitemp_counter_token_plus_not_temp_simple_token_reverse():
+def test_simple_token_plus_counter_token():
     simple_token = SimpleToken()
     counter_token = CounterToken(1)
     token = simple_token + counter_token
