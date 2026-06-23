@@ -6,7 +6,6 @@ from cantok.errors import CancellationError
 from cantok.tokens.abstract.cancel_cause import CancelCause
 from cantok.tokens.abstract.coroutine_wrapper import WaitCoroutineWrapper
 from cantok.tokens.abstract.report import CancellationReport
-from cantok.types import IterableWithTokens
 
 
 class AbstractToken(ABC):
@@ -42,9 +41,13 @@ class AbstractToken(ABC):
     _rollback_if_nondirect_polling = False
 
     def __init__(self, *tokens: 'AbstractToken', cancelled: bool = False) -> None:
+        from cantok import DefaultToken  # noqa: PLC0415
+
         self._cached_report: Optional[CancellationReport] = None
         self._cancelled: bool = cancelled
-        self._tokens: List[AbstractToken] = self._filter_tokens(tokens)
+        self._tokens: List[AbstractToken] = [
+            token for token in tokens if not isinstance(token, DefaultToken)
+        ]
 
         self._lock: RLock = RLock()
 
@@ -64,7 +67,9 @@ class AbstractToken(ABC):
         else:
             extra_kwargs = {}
         extra_kwargs.update(**(self._get_extra_kwargs()))
-        text_representation_of_extra_kwargs = self._text_representation_of_kwargs(**extra_kwargs)
+        text_representation_of_extra_kwargs = self._text_representation_of_kwargs(
+            **extra_kwargs,
+        )
         if text_representation_of_extra_kwargs:
             chunks.append(text_representation_of_extra_kwargs)
 
@@ -72,7 +77,9 @@ class AbstractToken(ABC):
         return f'{type(self).__name__}({glued_chunks})'
 
     def __str__(self) -> str:
-        cancelled_flag = 'cancelled' if self.is_cancelled(direct=False) else 'not cancelled'
+        cancelled_flag = (
+            'cancelled' if self.is_cancelled(direct=False) else 'not cancelled'
+        )
         return f'<{type(self).__name__} ({cancelled_flag})>'
 
     def __add__(self, item: 'AbstractToken') -> 'AbstractToken':
@@ -147,7 +154,11 @@ class AbstractToken(ABC):
         """
         return self._get_report(direct=direct).cause != CancelCause.NOT_CANCELLED
 
-    def wait(self, step: Union[int, float] = 0.0001, timeout: Optional[Union[int, float]] = None) -> Awaitable:  # type: ignore[type-arg]
+    def wait(
+        self,
+        step: Union[int, float] = 0.0001,
+        timeout: Optional[Union[int, float]] = None,
+    ) -> Awaitable:  # type: ignore[type-arg]
         """
         Waits until the token is cancelled.
 
@@ -165,17 +176,23 @@ class AbstractToken(ABC):
         >>> asyncio.run(TimeoutToken(5).wait())   # non-blocking, inside an asyncio event loop
         """
         if step < 0:
-            raise ValueError('The token polling iteration time cannot be less than zero.')
+            raise ValueError(
+                'The token polling iteration time cannot be less than zero.',
+            )
         if timeout is not None and timeout < 0:
             raise ValueError('The total timeout of waiting cannot be less than zero.')
         if timeout is not None and step > timeout:
-            raise ValueError('The total timeout of waiting cannot be less than the time of one iteration of the token polling.')
+            raise ValueError(
+                'The total timeout of waiting cannot be less than the time of one iteration of the token polling.',
+            )
 
         if timeout is None:
             from cantok import SimpleToken  # noqa: PLC0415
+
             token: AbstractToken = SimpleToken()
         else:
             from cantok import TimeoutToken  # noqa: PLC0415
+
             token = TimeoutToken(timeout)
 
         return WaitCoroutineWrapper(step, self + token, token)
@@ -217,19 +234,6 @@ class AbstractToken(ABC):
             elif report.cause == CancelCause.SUPERPOWER:
                 report.from_token._raise_superpower_exception()
 
-    def _filter_tokens(self, tokens: IterableWithTokens) -> List['AbstractToken']:
-        from cantok import DefaultToken  # noqa: PLC0415
-
-        result: List[AbstractToken] = []
-
-        for token in tokens:
-            if isinstance(token, DefaultToken):
-                pass
-            else:
-                result.append(token)
-
-        return result
-
     def _get_report(self, direct: bool = True) -> CancellationReport:
         if self._cancelled:
             return CancellationReport(
@@ -259,7 +263,10 @@ class AbstractToken(ABC):
     def _superpower(self) -> bool:  # pragma: no cover
         pass
 
-    def _superpower_rollback(self, superpower_data: Dict[str, Any]) -> None:  # pragma: no cover  # noqa: B027
+    def _superpower_rollback(  # noqa: B027
+        self,
+        superpower_data: Dict[str, Any],
+    ) -> None:  # pragma: no cover
         pass
 
     def _check_superpower(self, direct: bool) -> bool:
