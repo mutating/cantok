@@ -3,7 +3,7 @@ import sys
 import pytest
 from full_match import match
 
-from cantok import DefaultToken, ImpossibleCancelError, SimpleToken, TimeoutToken
+from cantok import DefaultToken, ImpossibleCancelError, SimpleToken
 
 
 def test_dafault_token_is_not_cancelled_by_default():
@@ -75,17 +75,33 @@ def test_default_plus_default_plus_default():
     empty_sum = DefaultToken() + DefaultToken() + DefaultToken()
 
     assert isinstance(empty_sum, SimpleToken)
-    assert len(empty_sum._tokens) == 0
+    assert len(empty_sum._tokens) == 1
+    assert isinstance(empty_sum._tokens[0], SimpleToken)
+    assert len(empty_sum._tokens[0]._tokens) == 0
 
 
-def test_default_token_plus_temp_simple_token():
-    empty_sum = DefaultToken() + SimpleToken()
+def test_default_plus_default_plus_default_preserves_intermediate_simple_token():
+    inner_sum = DefaultToken() + DefaultToken()
+    total = inner_sum + DefaultToken()
 
-    assert isinstance(empty_sum, SimpleToken)
-    assert len(empty_sum._tokens) == 0
+    assert isinstance(total, SimpleToken)
+    assert len(total._tokens) == 1
+    assert total._tokens[0] is inner_sum
+
+    inner_sum.cancel()
+
+    assert not total
 
 
-def test_default_token_plus_not_temp_simple_token():
+def test_default_token_plus_inline_simple_token():
+    total = DefaultToken() + SimpleToken()
+
+    assert isinstance(total, SimpleToken)
+    assert len(total._tokens) == 1
+    assert isinstance(total._tokens[0], SimpleToken)
+
+
+def test_default_token_plus_bound_simple_token():
     simple_token = SimpleToken()
     total = DefaultToken() + simple_token
 
@@ -95,17 +111,3 @@ def test_default_token_plus_not_temp_simple_token():
     assert total._tokens[0] is simple_token
 
 
-def test_temp_default_token_plus_temp_timeout_token():
-    token = DefaultToken() + TimeoutToken(1)
-
-    assert isinstance(token, TimeoutToken)
-    assert token._timeout == 1
-    assert len(token._tokens) == 0
-
-
-def test_temp_timeout_token_plus_temp_default_token():
-    token = TimeoutToken(1) + DefaultToken()
-
-    assert isinstance(token, TimeoutToken)
-    assert token._timeout == 1
-    assert len(token._tokens) == 0

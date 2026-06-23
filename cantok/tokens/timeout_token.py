@@ -49,8 +49,6 @@ class TimeoutToken(ConditionToken):
         def function() -> bool:
             return timer() >= deadline
 
-        self._deadline = deadline
-
         super().__init__(function, *tokens, cancelled=cancelled)
 
     def _text_representation_of_superpower(self) -> str:
