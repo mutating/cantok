@@ -843,7 +843,7 @@ def test_wait_timeout_returns_when_waited_token_cancellation_wins(token_fabric):
     'token_fabric',
     ALL_TOKENS_FABRICS,
 )
-def test_sync_wait_returns_none(token_fabric):
+def test_wait_without_timeout_returns_none(token_fabric):
     """
     Synchronous `wait()` must return `None`.
 
