@@ -1,4 +1,4 @@
-Each token has a `wait()` method, which allows you to wait for its cancellation.
+Each token has a `wait()` method, which allows you to block the current thread until the token is cancelled.
 
 ```python
 from cantok import TimeoutToken
@@ -10,25 +10,25 @@ token.check()  # Since the timeout has expired, an exception will be raised.
 #> cantok.errors.TimeoutCancellationError: The timeout of 5 seconds has expired.
 ```
 
-If you add the `await` keyword before calling `wait()`, the method will be automatically used in non-blocking mode:
+This is useful when one thread needs to wait for cancellation requested from another thread:
 
 ```python
-import asyncio
+from threading import Thread
+from time import sleep
 from cantok import SimpleToken
 
-async def do_something(token):
-  await asyncio.sleep(3)  # Imitation of some real async activity.
+def do_something(token):
+  sleep(3)  # Imitation of some real activity.
   token.cancel()
 
-async def main():
-  token = SimpleToken()
-  await asyncio.gather(do_something(token), token.wait())
-  print('Something has been done!')
+token = SimpleToken()
+thread = Thread(target=do_something, args=(token,))
+thread.start()
 
-asyncio.run(main())
+token.wait()
+thread.join()
+print('Something has been done!')
 ```
-
-Yes, it looks like magic — it is magic. The method itself finds out how it was used: inside an expression with or without the `await` keyword. In the first case, it runs in CPU-saving mode, in the second — in non-blocking event-loop mode.
 
 In addition to the above, the `wait()` method has two optional arguments:
 
