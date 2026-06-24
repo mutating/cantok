@@ -18,6 +18,7 @@ from cantok import ConditionToken, CounterToken, SimpleToken, TimeoutToken
         (lambda: 'kek', f'{"kek"!r}\n'),
     ],
 )
+@pytest.mark.skip(reason='The universal sync/async wait() method is no longer supported because it suppressed exceptions raised during wait-time cancellation checks.')
 def test_displayhook_printing_coroutine_wrappers_and_other_objects(create_value, expected_string):
     buffer = io.StringIO()
     with redirect_stdout(buffer):
