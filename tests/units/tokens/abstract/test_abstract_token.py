@@ -1,4 +1,3 @@
-import asyncio
 from functools import partial
 from threading import Thread
 from time import perf_counter, sleep
@@ -761,58 +760,11 @@ def test_repr_if_nested_token_is_cancelled(token_fabric_1, token_fabric_2, cance
     'token_fabric',
     [*ALL_TOKENS_FABRICS, DefaultToken],
 )
-@pytest.mark.parametrize(
-    'do_await',
-    [
-        True,
-        False,
-    ],
-)
-def test_wait_wrong_parameters(token_fabric, parameters, do_await):
+def test_wait_wrong_parameters(token_fabric, parameters):
     token = token_fabric()
 
-    if do_await:
-        with pytest.raises(ValueError, match=r'.'):
-            asyncio.run(token.wait(**parameters))
-    else:
-        with pytest.raises(ValueError, match=r'.'):
-            token.wait(**parameters)
-
-
-@pytest.mark.parametrize(
-    'token_fabric',
-    [*ALL_TOKENS_FABRICS, DefaultToken],
-)
-def test_async_wait_timeout(token_fabric):
-    timeout = 0.0001
-    token = token_fabric()
-
-    with pytest.raises(TimeoutToken.exception):
-        asyncio.run(token.wait(timeout=timeout))
-
-
-@pytest.mark.parametrize(
-    'token_fabric',
-    ALL_TOKENS_FABRICS,
-)
-def test_async_wait_with_cancel(token_fabric):
-    timeout = 0.001
-    token = token_fabric()
-
-    async def cancel_with_timeout(token):
-        await asyncio.sleep(timeout)
-        token.cancel()
-
-    async def runner(token):
-        coroutines = [cancel_with_timeout(token), token.wait() ]
-        return await asyncio.gather(*coroutines)
-
-    start_time = perf_counter()
-    asyncio.run(runner(token))
-    finish_time = perf_counter()
-
-    assert not token
-    assert finish_time - start_time >= timeout
+    with pytest.raises(ValueError, match=r'.'):
+        token.wait(**parameters)
 
 
 @pytest.mark.parametrize(
@@ -835,6 +787,74 @@ def test_sync_wait_with_cancel(token_fabric):
     finish_time = perf_counter()
 
     assert finish_time - start_time >= timeout
+
+
+@pytest.mark.parametrize(
+    'token_fabric',
+    [*ALL_TOKENS_FABRICS, DefaultToken],
+)
+def test_wait_timeout_exception_is_raised_synchronously(token_fabric):
+    """
+    `wait(timeout=...)` must raise the timeout exception in the caller's frame.
+
+    The old universal sync/async wrapper ran the synchronous wait from a
+    finalizer, so `TimeoutCancellationError` could be ignored by Python instead
+    of being delivered to the caller. This test waits for a token that will not
+    cancel by itself before the auxiliary timeout and verifies that the exception
+    is raised directly by `wait()`.
+    """
+    timeout = 0.0001
+    token = token_fabric()
+
+    with pytest.raises(TimeoutToken.exception) as exc_info:
+        token.wait(timeout=timeout)
+
+    assert isinstance(exc_info.value.token, TimeoutToken)
+    assert exc_info.value.token is not token
+
+
+@pytest.mark.parametrize(
+    'token_fabric',
+    ALL_TOKENS_FABRICS,
+)
+def test_wait_timeout_returns_when_waited_token_cancellation_wins(token_fabric):
+    """
+    `wait(timeout=...)` must return normally when waited-token cancellation wins.
+
+    The timeout token created inside `wait()` is only a maximum waiting limit,
+    so a cancellation reported by the waited token must make `wait()` complete
+    without raising `TimeoutCancellationError`. The test embeds a `CounterToken`
+    into each waited token, then uses the cached report to prove that `wait()`
+    itself observed the waited-token cancellation without an extra
+    `CounterToken` poll in the assertion.
+    """
+    nested_token = CounterToken(1, direct=False)
+    token = token_fabric(nested_token)
+    result = token.wait(step=0, timeout=1)
+
+    assert result is None
+    assert token._cached_report == CancellationReport(
+        cause=CancelCause.SUPERPOWER,
+        from_token=nested_token,
+    )
+
+
+@pytest.mark.parametrize(
+    'token_fabric',
+    ALL_TOKENS_FABRICS,
+)
+def test_wait_without_timeout_returns_none(token_fabric):
+    """
+    Synchronous `wait()` must return `None`.
+
+    A pre-cancelled token makes the wait finish immediately, so the test isolates
+    the public return value from timing concerns and fixes the sync-only API:
+    callers get completion, not an object to await.
+    """
+    token = token_fabric(cancelled=True)
+    result = token.wait()
+
+    assert result is None
 
 
 @pytest.mark.parametrize(
@@ -976,4 +996,3 @@ def test_just_neste_simple_token_to_another_token(token_fabric):
     assert len(token._tokens) == 1
     assert isinstance(token._tokens[0], SimpleToken)
     assert token
-

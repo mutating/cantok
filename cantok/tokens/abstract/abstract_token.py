@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 from threading import RLock
-from typing import Any, Awaitable, Dict, List, Optional, Union
+from time import sleep
+from typing import Any, Dict, List, Optional, Union
 
 from cantok.errors import CancellationError
 from cantok.tokens.abstract.cancel_cause import CancelCause
-from cantok.tokens.abstract.coroutine_wrapper import WaitCoroutineWrapper
 from cantok.tokens.abstract.report import CancellationReport
 
 
@@ -156,22 +156,18 @@ class AbstractToken(ABC):
         self,
         step: Union[int, float] = 0.0001,
         timeout: Optional[Union[int, float]] = None,
-    ) -> Awaitable:  # type: ignore[type-arg]
+    ) -> None:
         """
         Waits until the token is cancelled.
 
-        When used with ``await``, runs non-blocking inside an asyncio event loop.
-        When called without ``await``, blocks the current thread.
+        Blocks the current thread until the token is cancelled.
 
         :param step: Interval between status checks, in seconds. Defaults to 0.0001.
         :param timeout: Maximum time to wait, in seconds. If exceeded,
                         raises TimeoutCancellationError. Defaults to None (no limit).
 
-        >>> import asyncio
-        >>>
         >>> token = TimeoutToken(5)
         >>> token.wait()   # blocks for ~5 seconds, then returns
-        >>> asyncio.run(TimeoutToken(5).wait())   # non-blocking, inside an asyncio event loop
         """
         if step < 0:
             raise ValueError(
@@ -193,7 +189,12 @@ class AbstractToken(ABC):
 
             token = TimeoutToken(timeout)
 
-        return WaitCoroutineWrapper(step, self + token, token)
+        token_for_wait = self + token
+
+        while token_for_wait:
+            sleep(step)
+
+        token.check()
 
     def cancel(self) -> 'AbstractToken':
         """

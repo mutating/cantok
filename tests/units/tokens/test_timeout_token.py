@@ -1,4 +1,3 @@
-import asyncio
 from time import perf_counter, sleep
 
 import pytest
@@ -183,33 +182,6 @@ def test_get_report_cancelled_nested(timeout, timeout_nested, from_token_is_nest
         assert report.from_token is nested_token
     else:
         assert report.from_token is token
-
-
-def test_async_wait_timeout():
-    sleep_duration = 0.0001
-    token = TimeoutToken(sleep_duration)
-
-    start_time = perf_counter()
-    asyncio.run(token.wait())
-    finish_time = perf_counter()
-
-    assert sleep_duration <= finish_time - start_time
-
-
-def test_run_async_multiple_timeouts():
-    sleep_duration = 0.001
-    number_of_tokens = 100
-
-    tokens = [TimeoutToken(sleep_duration) for x in range(number_of_tokens)]
-
-    async def runner():
-        return await asyncio.gather(*(x.wait() for x in tokens))
-
-    start_time = perf_counter()
-    asyncio.run(runner())
-    finish_time = perf_counter()
-
-    assert (finish_time - start_time) < (sleep_duration * number_of_tokens)
 
 
 def test_timeout_wait():

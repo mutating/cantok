@@ -10,6 +10,19 @@ token.check()
 #> cantok.errors.TimeoutCancellationError: The timeout of 1 second has expired.
 ```
 
+The `wait()` method can also raise an exception directly when its own waiting timeout expires:
+
+```python
+from cantok import SimpleToken, TimeoutCancellationError
+
+token = SimpleToken()
+
+try:
+    token.wait(timeout=1)
+except TimeoutCancellationError:
+    print('Waiting took too long.')
+```
+
 Each type of token (except [`DefaultToken`](../types_of_tokens/DefaultToken.md)) has a corresponding type of exception that can be raised in this case:
 
 - [`SimpleToken`](../types_of_tokens/SimpleToken.md) -> `CancellationError`
