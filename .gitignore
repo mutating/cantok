@@ -13,6 +13,7 @@ test.py
 .ipynb_checkpoints
 .coverage
 .mutmut-cache
+mutants
 html
 .qwen
 .claude
