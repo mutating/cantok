@@ -7,3 +7,4 @@ ruff==0.14.6
 mkdocs-material==9.6.6
 mutmut==3.2.3
 full_match==0.0.3
+pytest-mypy-testing==0.1.3
