@@ -12,7 +12,7 @@ requires-python = ">=3.8"
 dependencies = [
     'printo>=0.0.28',
     'transfunctions>=0.0.12',
-    'typing_extensions ; python_version <= "3.9"',
+    'typing_extensions>=4.5.0 ; python_version < "3.13"',
 ]
 classifiers = [
     "Operating System :: OS Independent",
