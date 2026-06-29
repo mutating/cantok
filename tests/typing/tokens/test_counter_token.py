@@ -1,7 +1,7 @@
-from sys import version_info
+import sys
 from typing import Optional
 
-if version_info < (3, 11):
+if sys.version_info < (3, 11):
     from typing_extensions import assert_type
 else:
     from typing import assert_type
