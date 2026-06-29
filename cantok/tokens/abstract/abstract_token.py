@@ -40,7 +40,19 @@ class AbstractToken(ABC):
     exception = CancellationError
     _rollback_if_nondirect_polling = False
 
-    def __init__(self, *tokens: 'AbstractToken', cancelled: bool = False) -> None:
+    def __init__(self, *tokens: 'AbstractToken', cancelled: bool = False, doc: Optional[str] = None) -> None:
+        if doc is not None:
+            if not isinstance(doc, str):
+                raise TypeError('The token description must be a string.')
+
+            if doc == '':
+                raise ValueError('The token description cannot be empty.')
+
+            if doc.isspace():
+                raise ValueError('The token description cannot be empty (the passed string contains only whitespace characters).')
+
+        self.doc = doc
+
         from cantok import DefaultToken  # noqa: PLC0415
 
         self._cached_report: Optional[CancellationReport] = None
@@ -60,6 +72,7 @@ class AbstractToken(ABC):
         if other_tokens:
             chunks.append(other_tokens)
         report = self._get_report(direct=False)
+        extra_kwargs: Dict[str, Any]
         if report.cause == CancelCause.NOT_CANCELLED:
             extra_kwargs = {}
         elif report.from_token is self and report.cause == CancelCause.CANCELLED:
@@ -67,6 +80,8 @@ class AbstractToken(ABC):
         else:
             extra_kwargs = {}
         extra_kwargs.update(**(self._get_extra_kwargs()))
+        if self.doc is not None:
+            extra_kwargs['doc'] = self.doc
         text_representation_of_extra_kwargs = self._text_representation_of_kwargs(
             **extra_kwargs,
         )
@@ -297,11 +312,16 @@ class AbstractToken(ABC):
         pairs: List[str] = [f'{key}={value!r}' for key, value in kwargs.items()]
         return ', '.join(pairs)
 
+    def _get_exception_message_suffix(self) -> str:
+        if self.doc is None:
+            return ''
+        return f' Token description: {self.doc!r}.'
+
     def _raise_cancelled_exception(self) -> None:
-        raise CancellationError('The token has been cancelled.', self)
+        raise CancellationError('The token has been cancelled.' + self._get_exception_message_suffix(), self)
 
     def _raise_superpower_exception(self) -> None:
-        raise self.exception(self._get_superpower_exception_message(), self)
+        raise self.exception(self._get_superpower_exception_message() + self._get_exception_message_suffix(), self)
 
     @abstractmethod
     def _get_superpower_exception_message(self) -> str:  # pragma: no cover

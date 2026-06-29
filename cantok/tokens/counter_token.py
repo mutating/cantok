@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from cantok import AbstractToken, ConditionToken
 from cantok.errors import CounterCancellationError
@@ -25,7 +25,7 @@ class CounterToken(ConditionToken):
 
     exception = CounterCancellationError
 
-    def __init__(self, counter: int, *tokens: AbstractToken, cancelled: bool = False, direct: bool = True):
+    def __init__(self, counter: int, *tokens: AbstractToken, cancelled: bool = False, direct: bool = True, doc: Optional[str] = None):
         if counter < 0:
             raise ValueError('The counter must be greater than or equal to zero.')
 
@@ -43,7 +43,7 @@ class CounterToken(ConditionToken):
                 counter_bag['counter'] -= 1
                 return False
 
-        super().__init__(function, *tokens, cancelled=cancelled)
+        super().__init__(function, *tokens, cancelled=cancelled, doc=doc)
 
         self._counter_bag['lock'] = self._lock  # type: ignore[assignment]
 

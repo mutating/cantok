@@ -1,5 +1,5 @@
 from contextlib import suppress
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from cantok import AbstractToken
 from cantok.errors import ConditionCancellationError
@@ -33,8 +33,8 @@ class ConditionToken(AbstractToken):
 
     exception = ConditionCancellationError
 
-    def __init__(self, function: Callable[[], bool], *tokens: AbstractToken, cancelled: bool = False, suppress_exceptions: bool = True, default: bool = False, before: Callable[[], Any] = lambda: None, after: Callable[[], Any] = lambda: None, caching: bool = True):  # noqa: PLR0913
-        super().__init__(*tokens, cancelled=cancelled)
+    def __init__(self, function: Callable[[], bool], *tokens: AbstractToken, cancelled: bool = False, suppress_exceptions: bool = True, default: bool = False, before: Callable[[], Any] = lambda: None, after: Callable[[], Any] = lambda: None, caching: bool = True, doc: Optional[str] = None):  # noqa: PLR0913
+        super().__init__(*tokens, cancelled=cancelled, doc=doc)
 
         self._function = function
         self._before = before
