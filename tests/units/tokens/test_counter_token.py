@@ -6,6 +6,11 @@ from cantok import CounterCancellationError, CounterToken, DefaultToken, SimpleT
 from cantok.tokens.abstract.abstract_token import CancelCause, CancellationReport
 
 
+def test_counter_token_is_deprecated():
+    with pytest.warns(DeprecationWarning, match='CounterToken is deprecated'):
+        CounterToken(1)
+
+
 @pytest.mark.parametrize(
     'iterations',
     [

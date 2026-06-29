@@ -1,9 +1,16 @@
+import sys
 from typing import Any, Dict, Optional
+
+if sys.version_info < (3, 13):  # pragma: no cover
+    from typing_extensions import deprecated
+else:  # pragma: no cover
+    from warnings import deprecated
 
 from cantok import AbstractToken, ConditionToken
 from cantok.errors import CounterCancellationError
 
 
+@deprecated('CounterToken is deprecated and will be removed in a future release.')
 class CounterToken(ConditionToken):
     """
     A token that cancels automatically after a fixed number of iterations.
