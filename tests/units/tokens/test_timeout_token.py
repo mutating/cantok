@@ -5,11 +5,23 @@ import pytest
 from cantok import (
     ConditionToken,
     CounterToken,
+    DefaultToken,
     SimpleToken,
     TimeoutCancellationError,
+    TimeOutToken,
     TimeoutToken,
 )
 from cantok.tokens.abstract.abstract_token import CancelCause, CancellationReport
+
+
+def test_timeout_token_deprecated_alias_points_to_timeout_token():
+    """
+    `TimeOutToken` remains a direct alias of `TimeoutToken`.
+
+    The test keeps alias behavior separate from repeated constructor checks, so
+    `doc` coverage does not need duplicate cases for both names.
+    """
+    assert TimeOutToken is TimeoutToken
 
 
 @pytest.mark.parametrize(
@@ -98,16 +110,34 @@ def test_text_representaion_of_extra_kwargs():
     assert TimeoutToken(5)._text_representation_of_extra_kwargs() == ''
 
 
-@pytest.mark.parametrize(
-    ('options', 'repr_string'),
-    [
-        ({}, 'TimeoutToken(1)'),
-        ({'monotonic': True}, 'TimeoutToken(1, monotonic=True)'),
-        ({'monotonic': False}, 'TimeoutToken(1)'),
-    ],
-)
-def test_repr_of_timeout_token(options, repr_string):
-    assert repr(TimeoutToken(1, **options)) == repr_string
+def test_repr_of_timeout_token():
+    """
+    `TimeoutToken` repr reflects timeout values, state, and monotonic options.
+
+    The same option cases also check that a valid `doc` is appended after the
+    existing option text without changing the old repr. Extra assertions cover
+    state, nesting, escaping, and neutral `DefaultToken` filtering.
+    """
+    assert repr(TimeoutToken(1)) == 'TimeoutToken(1)'
+    assert repr(TimeoutToken(0)) == 'TimeoutToken(0)'
+    assert repr(TimeoutToken(0.5)) == 'TimeoutToken(0.5)'
+    assert repr(TimeoutToken(1.25, monotonic=False)) == 'TimeoutToken(1.25)'
+    assert repr(TimeoutToken(0.5, monotonic=True)) == 'TimeoutToken(0.5, monotonic=True)'
+    assert repr(TimeoutToken(1, cancelled=False, monotonic=True)) == 'TimeoutToken(1, monotonic=True)'
+    assert repr(TimeoutToken(1, cancelled=True)) == 'TimeoutToken(1, cancelled=True)'
+    assert repr(TimeoutToken(1, doc='d')) == "TimeoutToken(1, doc='d')"
+    assert repr(TimeoutToken(1, monotonic=True)) == 'TimeoutToken(1, monotonic=True)'
+    assert repr(TimeoutToken(1, monotonic=True, doc='d')) == "TimeoutToken(1, monotonic=True, doc='d')"
+    assert repr(TimeoutToken(1, monotonic=False)) == 'TimeoutToken(1)'
+    assert repr(TimeoutToken(1, monotonic=False, doc='d')) == "TimeoutToken(1, doc='d')"
+    assert repr(TimeoutToken(1, monotonic=True, cancelled=True, doc=None)) == 'TimeoutToken(1, cancelled=True, monotonic=True)'
+    assert repr(TimeoutToken(0, doc='d')) == "TimeoutToken(0, doc='d')"
+    assert repr(TimeoutToken(1, cancelled=True, doc='d')) == "TimeoutToken(1, cancelled=True, doc='d')"
+    assert repr(TimeoutToken(1, monotonic=True, cancelled=True, doc='d')) == "TimeoutToken(1, cancelled=True, monotonic=True, doc='d')"
+    assert repr(TimeoutToken(1, doc="escaped ' doc")) == 'TimeoutToken(1, doc="escaped \' doc")'
+    assert repr(TimeoutToken(1, TimeoutToken(2), doc=None)) == 'TimeoutToken(1, TimeoutToken(2))'
+    assert repr(TimeoutToken(1, TimeoutToken(2, doc='nested'), doc='parent')) == "TimeoutToken(1, TimeoutToken(2, doc='nested'), doc='parent')"
+    assert repr(TimeoutToken(1, DefaultToken(doc='neutral'), doc='parent')) == "TimeoutToken(1, doc='parent')"
 
 
 def test_check_superpower_raised():

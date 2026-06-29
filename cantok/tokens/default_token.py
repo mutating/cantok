@@ -1,3 +1,5 @@
+from typing import Optional
+
 from cantok import AbstractToken
 from cantok.errors import ImpossibleCancelError
 
@@ -20,8 +22,8 @@ class DefaultToken(AbstractToken):
 
     exception = ImpossibleCancelError
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *, doc: Optional[str] = None) -> None:
+        super().__init__(doc=doc)
 
     @property
     def cancelled(self) -> bool:

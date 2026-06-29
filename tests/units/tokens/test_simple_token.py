@@ -1,6 +1,6 @@
 import pytest
 
-from cantok import CancellationError, SimpleToken
+from cantok import CancellationError, DefaultToken, SimpleToken
 from cantok.tokens.abstract.abstract_token import CancelCause, CancellationReport
 
 
@@ -14,6 +14,21 @@ def test_just_created_token_with_argument_cancelled():
     assert SimpleToken(cancelled=True).cancelled == True
     assert SimpleToken(cancelled=True).is_cancelled() == True
     assert SimpleToken(cancelled=True).keep_on() == False
+
+
+def test_repr_with_doc():
+    """
+    `SimpleToken` repr includes `doc` as the last keyword field.
+
+    The test covers escaped text, manual cancellation, nested-token
+    descriptions, explicit `doc=None`, and neutral `DefaultToken` filtering.
+    """
+    assert repr(SimpleToken(doc='d')) == "SimpleToken(doc='d')"
+    assert repr(SimpleToken(doc="escaped ' doc")) == 'SimpleToken(doc="escaped \' doc")'
+    assert repr(SimpleToken(cancelled=True, doc='d')) == "SimpleToken(cancelled=True, doc='d')"
+    assert repr(SimpleToken(SimpleToken(), doc=None)) == 'SimpleToken(SimpleToken())'
+    assert repr(SimpleToken(SimpleToken(doc='nested'), doc='parent')) == "SimpleToken(SimpleToken(doc='nested'), doc='parent')"
+    assert repr(SimpleToken(DefaultToken(doc='neutral'), doc='parent')) == "SimpleToken(doc='parent')"
 
 
 @pytest.mark.parametrize(('arguments', 'expected_cancelled_status'), [
@@ -119,5 +134,3 @@ def test_sum_of_2_bound_simple_tokens():
     assert len(result._tokens) == 2
     assert result._tokens[0] is first_token
     assert result._tokens[1] is second_token
-
-

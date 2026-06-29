@@ -1,5 +1,5 @@
 from time import monotonic_ns, perf_counter
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 from cantok import AbstractToken, ConditionToken
 from cantok.errors import TimeoutCancellationError
@@ -30,7 +30,7 @@ class TimeoutToken(ConditionToken):
 
     exception = TimeoutCancellationError
 
-    def __init__(self, timeout: Union[int, float], *tokens: AbstractToken, cancelled: bool = False, monotonic: bool = False):
+    def __init__(self, timeout: Union[int, float], *tokens: AbstractToken, cancelled: bool = False, monotonic: bool = False, doc: Optional[str] = None):
         if timeout < 0:
             raise ValueError('You cannot specify a timeout less than zero.')
 
@@ -49,7 +49,7 @@ class TimeoutToken(ConditionToken):
         def function() -> bool:
             return timer() >= deadline
 
-        super().__init__(function, *tokens, cancelled=cancelled)
+        super().__init__(function, *tokens, cancelled=cancelled, doc=doc)
 
     def _text_representation_of_superpower(self) -> str:
         return str(self._timeout)
