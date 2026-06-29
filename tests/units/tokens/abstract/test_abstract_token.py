@@ -1,3 +1,4 @@
+import time
 from functools import partial
 from threading import Thread
 from time import perf_counter, sleep
@@ -504,7 +505,7 @@ def test_cached_nested_cancellation_report_does_not_override_later_parent_superp
     assert exc_info.value.token is token
 
     current_time = 0.0
-    monkeypatch.setattr('cantok.tokens.timeout_token.perf_counter', lambda: current_time)
+    monkeypatch.setattr(time, 'perf_counter', lambda: current_time)
     token = TimeoutToken(1, nested_token, doc='parent-doc')
 
     assert token.cancelled

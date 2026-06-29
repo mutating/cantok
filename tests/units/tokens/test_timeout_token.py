@@ -1,3 +1,4 @@
+import time
 from time import perf_counter, sleep
 
 import pytest
@@ -102,6 +103,34 @@ def test_timeout_expired(options):
     assert token.is_cancelled() == True
     assert token.keep_on() == False
     assert token.keep_on() == False
+
+
+@pytest.mark.parametrize(
+    ('monotonic', 'clock_name', 'expired_time'),
+    [
+        (False, 'perf_counter', 1.1),
+        (True, 'monotonic_ns', 1_100_000_000),
+    ],
+)
+def test_timeout_token_clock_can_be_patched_through_time_module(monkeypatch, monotonic, clock_name, expired_time):
+    """
+    `TimeoutToken` reads its clock through the standard `time` module.
+
+    Patching the public clock function before construction must control both
+    the deadline calculation and later cancellation checks without reaching
+    into `cantok.tokens.timeout_token` internals.
+    """
+    current_time = 0.0
+
+    monkeypatch.setattr(time, clock_name, lambda: current_time)
+
+    token = TimeoutToken(1, monotonic=monotonic)
+
+    assert token.cancelled == False
+
+    current_time = expired_time
+
+    assert token.cancelled == True
 
 
 def test_text_representaion_of_extra_kwargs():
