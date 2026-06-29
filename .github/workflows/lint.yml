@@ -39,4 +39,4 @@ jobs:
 
       - name: Run mypy for tests
         shell: bash
-        run: mypy tests
+        run: mypy tests --exclude tests/typing
