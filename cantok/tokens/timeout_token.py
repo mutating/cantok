@@ -1,4 +1,4 @@
-from time import monotonic_ns, perf_counter
+import time
 from typing import Any, Callable, Dict, Optional, Union
 
 from cantok import AbstractToken, ConditionToken
@@ -40,9 +40,9 @@ class TimeoutToken(ConditionToken):
         timer: Callable[[], Union[int, float]]
         if monotonic:
             timeout *= 1_000_000_000
-            timer = monotonic_ns
+            timer = time.monotonic_ns
         else:
-            timer = perf_counter
+            timer = time.perf_counter
 
         start_time: Union[int, float] = timer()
         deadline = start_time + timeout
