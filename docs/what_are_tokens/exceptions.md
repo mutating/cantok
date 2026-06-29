@@ -64,3 +64,5 @@ try:
 except CancellationError as e:
     print(e.token is nested_token)  #> True
 ```
+
+You can also create any token with a `doc` description. It is included in `repr()` and, if that token causes a cancellation exception, added to the exception message. This makes it easier to recognize the specific cancelled token in nested token chains.
