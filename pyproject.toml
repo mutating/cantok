@@ -36,7 +36,7 @@ classifiers = [
     'Topic :: Software Development :: Libraries',
     'Typing :: Typed',
 ]
-keywords = ['cancellation tokens', 'parallel programming', 'concurrency']
+keywords = ['cancellation tokens', 'parallel programming', 'concurrency', 'context', 'go context']
 
 [tool.setuptools.package-data]
 "cantok" = ["py.typed"]
