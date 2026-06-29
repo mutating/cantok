@@ -662,7 +662,7 @@ def test_non_blank_doc_with_surrounding_whitespace_is_allowed_and_preserved(toke
             'You cannot restore a cancelled token.',
         ),
         (
-            lambda: SimpleToken(doc='d') + 1,
+            lambda: SimpleToken(doc='d') + 1,  # type: ignore[operator]
             TypeError,
             'Cancellation Token can only be combined with another Cancellation Token.',
         ),
@@ -677,7 +677,7 @@ def test_non_blank_doc_with_surrounding_whitespace_is_allowed_and_preserved(toke
             'You cannot specify a timeout less than zero.',
         ),
         (
-            lambda: ConditionToken(lambda: 'not bool', suppress_exceptions=False, doc='d').cancelled,
+            lambda: ConditionToken(lambda: 'not bool', suppress_exceptions=False, doc='d').cancelled,  # type: ignore[arg-type, return-value]
             TypeError,
             'The condition function can only return a bool value. The passed function returned "not bool" (str).',
         ),
