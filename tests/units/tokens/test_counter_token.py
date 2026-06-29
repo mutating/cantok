@@ -2,7 +2,7 @@ from threading import Thread
 
 import pytest
 
-from cantok import CounterCancellationError, CounterToken, SimpleToken
+from cantok import CounterCancellationError, CounterToken, DefaultToken, SimpleToken
 from cantok.tokens.abstract.abstract_token import CancelCause, CancellationReport
 
 
@@ -256,12 +256,22 @@ def test_zero_counter_token_report_is_about_superpower():
 
 
 def test_repr_for_counter_token():
+    """
+    `CounterToken` repr reflects counter, options, state, and nesting.
+
+    The same contract is checked with `doc`: `None` keeps the old repr, valid
+    text is appended last, escaped text is represented safely, and
+    `DefaultToken` remains neutral when nested.
+    """
     assert repr(CounterToken(0)) == 'CounterToken(0)'
     assert repr(CounterToken(1)) == 'CounterToken(1)'
     assert repr(CounterToken(10000)) == 'CounterToken(10000)'
 
     assert repr(CounterToken(10000, CounterToken(10000))) == 'CounterToken(10000, CounterToken(10000))'
     assert repr(CounterToken(10000, CounterToken(10000), CounterToken(10000))) == 'CounterToken(10000, CounterToken(10000), CounterToken(10000))'
+    assert repr(CounterToken(10000, CounterToken(10000), doc=None)) == 'CounterToken(10000, CounterToken(10000))'
+    assert repr(CounterToken(10000, CounterToken(10000, doc='nested'), doc='parent')) == "CounterToken(10000, CounterToken(10000, doc='nested'), doc='parent')"
+    assert repr(CounterToken(10000, DefaultToken(doc='neutral'), doc='parent')) == "CounterToken(10000, doc='parent')"
 
     assert repr(CounterToken(10000, direct=True)) == 'CounterToken(10000)'
     assert repr(CounterToken(10000, direct=False)) == 'CounterToken(10000, direct=False)'
@@ -271,3 +281,10 @@ def test_repr_for_counter_token():
 
     assert repr(CounterToken(10000, direct=False, cancelled=True)) == 'CounterToken(10000, cancelled=True, direct=False)'
     assert repr(CounterToken(10000, CounterToken(10000), direct=False, cancelled=True)) == 'CounterToken(10000, CounterToken(10000), cancelled=True, direct=False)'
+    assert repr(CounterToken(10000, CounterToken(10000), direct=False, cancelled=True, doc=None)) == 'CounterToken(10000, CounterToken(10000), cancelled=True, direct=False)'
+    assert repr(CounterToken(10000, doc='d')) == "CounterToken(10000, doc='d')"
+    assert repr(CounterToken(0, doc='d')) == "CounterToken(0, doc='d')"
+    assert repr(CounterToken(10000, cancelled=True, doc='d')) == "CounterToken(10000, cancelled=True, doc='d')"
+    assert repr(CounterToken(10000, direct=False, doc='d')) == "CounterToken(10000, direct=False, doc='d')"
+    assert repr(CounterToken(10000, direct=False, cancelled=True, doc='d')) == "CounterToken(10000, cancelled=True, direct=False, doc='d')"
+    assert repr(CounterToken(10000, doc="escaped ' doc")) == 'CounterToken(10000, doc="escaped \' doc")'

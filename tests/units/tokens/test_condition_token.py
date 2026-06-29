@@ -2,7 +2,7 @@ from functools import partial
 
 import pytest
 
-from cantok import ConditionCancellationError, ConditionToken, SimpleToken
+from cantok import ConditionCancellationError, ConditionToken, DefaultToken, SimpleToken
 from cantok.tokens.abstract.abstract_token import CancelCause, CancellationReport
 
 
@@ -361,16 +361,32 @@ def test_creating_condition_token_with_no_suppress_exceptions_is_not_calling_con
 
 
 def test_repr_of_condition_token():
+    """
+    `ConditionToken` repr reflects function text, options, state, and nesting.
+
+    The same contract is checked with `doc`: `None` keeps the old repr, valid
+    text is appended last, escaped text is represented safely, and
+    `DefaultToken` remains neutral when nested.
+    """
     def function(): return False
 
     assert repr(ConditionToken(lambda: False)) == 'ConditionToken(λ)'
     assert repr(ConditionToken(lambda: False, ConditionToken(lambda: False))) == 'ConditionToken(λ, ConditionToken(λ))'
+    assert repr(ConditionToken(lambda: False, ConditionToken(lambda: False), doc=None)) == 'ConditionToken(λ, ConditionToken(λ))'
+    assert repr(ConditionToken(lambda: False, ConditionToken(lambda: False, doc='nested'), doc='parent')) == "ConditionToken(λ, ConditionToken(λ, doc='nested'), doc='parent')"
+    assert repr(ConditionToken(lambda: False, DefaultToken(doc='neutral'), doc='parent')) == "ConditionToken(λ, doc='parent')"
     assert repr(ConditionToken(lambda: False, suppress_exceptions=True)) == 'ConditionToken(λ)'
     assert repr(ConditionToken(lambda: False, suppress_exceptions=False)) == 'ConditionToken(λ, suppress_exceptions=False)'
     assert repr(ConditionToken(lambda: False, default=False)) == 'ConditionToken(λ)'
     assert repr(ConditionToken(lambda: False, default=True)) == 'ConditionToken(λ, default=True)'
     assert repr(ConditionToken(lambda: False, suppress_exceptions=False, default=True)) == 'ConditionToken(λ, suppress_exceptions=False, default=True)'
     assert repr(ConditionToken(lambda: False, suppress_exceptions=False, default=True, cancelled=True)) == 'ConditionToken(λ, cancelled=True, suppress_exceptions=False, default=True)'
+    assert repr(ConditionToken(lambda: False, suppress_exceptions=False, default=True, cancelled=True, doc=None)) == 'ConditionToken(λ, cancelled=True, suppress_exceptions=False, default=True)'
+    assert repr(ConditionToken(lambda: False, doc='d')) == "ConditionToken(λ, doc='d')"
+    assert repr(ConditionToken(lambda: True, doc='d')) == "ConditionToken(λ, doc='d')"
+    assert repr(ConditionToken(lambda: False, cancelled=True, doc='d')) == "ConditionToken(λ, cancelled=True, doc='d')"
+    assert repr(ConditionToken(lambda: True, suppress_exceptions=False, default=True, doc='d')) == "ConditionToken(λ, suppress_exceptions=False, default=True, doc='d')"
+    assert repr(ConditionToken(lambda: False, doc="escaped ' doc")) == 'ConditionToken(λ, doc="escaped \' doc")'
 
     assert repr(ConditionToken(function)) == 'ConditionToken(function)'
     assert repr(ConditionToken(function, ConditionToken(function))) == 'ConditionToken(function, ConditionToken(function))'
@@ -381,6 +397,7 @@ def test_repr_of_condition_token():
     assert repr(ConditionToken(function, suppress_exceptions=False, default=True)) == 'ConditionToken(function, suppress_exceptions=False, default=True)'
 
     assert repr(ConditionToken(function, suppress_exceptions=False, default=True, cancelled=True)) == 'ConditionToken(function, cancelled=True, suppress_exceptions=False, default=True)'
+    assert repr(ConditionToken(function, suppress_exceptions=False, default=True, cancelled=True, doc='d')) == "ConditionToken(function, cancelled=True, suppress_exceptions=False, default=True, doc='d')"
 
 
 def test_repr_for_class_based_function():

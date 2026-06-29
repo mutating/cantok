@@ -10,7 +10,9 @@ from cantok import (
     ConditionToken,
     CounterToken,
     DefaultToken,
+    ImpossibleCancelError,
     SimpleToken,
+    TimeoutCancellationError,
     TimeoutToken,
 )
 from cantok.tokens.abstract.abstract_token import (
@@ -32,6 +34,22 @@ ALL_TOKENS_FABRICS_WITH_NOT_CANCELLING_SUPERPOWER = [partial(token_class, *argum
 def test_cant_instantiate_abstract_token():
     with pytest.raises(TypeError):
         AbstractToken()
+
+
+@pytest.mark.parametrize(
+    'token_fabric',
+    [*ALL_TOKENS_FABRICS, DefaultToken],
+)
+def test_doc_attribute_stores_optional_description_for_all_tokens(token_fabric):
+    """
+    Every public token exposes `doc` as the stored description.
+
+    Omitted and explicit `None` values become `None`; a valid string is
+    preserved as passed.
+    """
+    assert token_fabric().doc is None
+    assert token_fabric(doc=None).doc is None
+    assert token_fabric(doc='d').doc == 'd'
 
 
 @pytest.mark.parametrize(
@@ -105,14 +123,21 @@ def test_set_cancelled_false_if_this_token_is_not_cancelled_but_nested_token_is(
     [*ALL_TOKENS_FABRICS, DefaultToken],
 )
 def test_repr(token_fabric):
+    """
+    Every public token has a stable shared repr shape.
+
+    The common assertion checks the repr assembled from superpower text and
+    extra kwargs; explicit `doc=None` must keep the same representation.
+    """
     token = token_fabric()
 
     superpower_text = token._text_representation_of_superpower()
     extra_kwargs_text = token._text_representation_of_extra_kwargs()
 
-    elements = ', '.join([x for x in (superpower_text, extra_kwargs_text) if x])
+    elements = ', '.join(x for x in (superpower_text, extra_kwargs_text) if x)
 
-    assert repr(token) == type(token).__name__ + f'({elements})'
+    assert repr(token) == f'{type(token).__name__}({elements})'
+    assert repr(token_fabric(doc=None)) == repr(token)
 
 
 @pytest.mark.parametrize(
@@ -130,6 +155,34 @@ def test_repr_with_another_token(token_fabric):
 
 
 @pytest.mark.parametrize(
+    'first_token_fabric',
+    [*ALL_TOKENS_FABRICS, DefaultToken],
+)
+@pytest.mark.parametrize(
+    'second_token_fabric',
+    [*ALL_TOKENS_FABRICS, DefaultToken],
+)
+def test_default_token_with_doc_remains_neutral_in_composition(first_token_fabric, second_token_fabric):
+    """
+    `DefaultToken` remains neutral in composition even when it has `doc`.
+
+    The sum must keep only non-default operands, and its repr must match a
+    `SimpleToken` built from the operands that were not filtered out.
+    """
+    first_token = first_token_fabric(doc='left')
+    second_token = second_token_fabric(doc='right')
+    expected_tokens = [
+        token for token in (first_token, second_token)
+        if not isinstance(token, DefaultToken)
+    ]
+
+    tokens_sum = first_token + second_token
+
+    assert tokens_sum._tokens == expected_tokens
+    assert repr(tokens_sum) == repr(SimpleToken(*expected_tokens))
+
+
+@pytest.mark.parametrize(
     'token_fabric',
     ALL_TOKENS_FABRICS,
 )
@@ -141,6 +194,511 @@ def test_str(token_fabric):
     token.cancel()
 
     assert str(token) == '<' + type(token).__name__ + ' (cancelled)>'
+
+
+@pytest.mark.parametrize(
+    'token_fabric',
+    ALL_TOKENS_FABRICS,
+)
+@pytest.mark.parametrize(
+    ('make_token', 'make_token_without_doc'),
+    [
+        (
+            lambda fabric: fabric(doc='visible-doc'),
+            lambda fabric: fabric(),
+        ),
+        (
+            lambda fabric: fabric(doc='visible-doc').cancel(),
+            lambda fabric: fabric().cancel(),
+        ),
+        (
+            lambda fabric: fabric(
+                SimpleToken(cancelled=True, doc='nested-doc'),
+                doc='visible-doc',
+            ),
+            lambda fabric: fabric(SimpleToken(cancelled=True)),
+        ),
+    ],
+)
+def test_str_with_doc_is_unchanged(token_fabric, make_token, make_token_without_doc):
+    """
+    `doc` must not affect `str(token)`.
+
+    The exact `str()` text is covered by `test_str`, so this test only compares
+    equivalent regular tokens with and without `doc`.
+    """
+    token = make_token(token_fabric)
+    token_without_doc = make_token_without_doc(token_fabric)
+
+    assert str(token) == str(token_without_doc)
+
+
+@pytest.mark.parametrize(
+    'token_fabric',
+    ALL_TOKENS_FABRICS_WITH_CANCELLING_SUPERPOWER,
+)
+def test_str_with_doc_is_unchanged_for_superpower_cancelled_tokens(token_fabric):
+    """
+    `doc` must not affect `str(token)` for superpower cancellation.
+
+    The exact `str()` text is covered by `test_str`, so this test only compares
+    equivalent superpower-cancelled tokens with and without `doc`.
+    """
+    token = token_fabric(doc='visible-doc')
+    token_without_doc = token_fabric()
+
+    assert str(token) == str(token_without_doc)
+
+
+@pytest.mark.parametrize(
+    ('doc_kwargs', 'expected_suffix'),
+    [
+        ({}, ''),
+        ({'doc': None}, ''),
+        ({'doc': 'manual-doc'}, " Token description: 'manual-doc'."),
+        ({'doc': '  manual-doc  '}, " Token description: '  manual-doc  '."),
+        ({'doc': "manual ' doc"}, ' Token description: "manual \' doc".'),
+    ],
+)
+@pytest.mark.parametrize(
+    'token_fabric',
+    ALL_TOKENS_FABRICS,
+)
+def test_manual_cancellation_message_includes_doc_only_when_present(token_fabric, doc_kwargs, expected_suffix):
+    """
+    Manual cancellation messages append `doc` only when it is present.
+
+    Omitted `doc` and explicit `None` keep the old exact message; valid text
+    adds the shared token-description suffix while preserving token identity
+    and surrounding whitespace.
+    """
+    token = token_fabric(**doc_kwargs)
+    token.cancel()
+
+    with pytest.raises(CancellationError, match=match('The token has been cancelled.' + expected_suffix)) as exc_info:
+        token.check()
+
+    assert type(exc_info.value) is CancellationError
+    assert exc_info.value.token is token
+
+
+@pytest.mark.parametrize(
+    ('doc_kwargs', 'expected_suffix'),
+    [
+        ({}, ''),
+        ({'doc': None}, ''),
+        ({'doc': 'manual-doc'}, " Token description: 'manual-doc'."),
+        ({'doc': "manual ' doc"}, ' Token description: "manual \' doc".'),
+    ],
+)
+@pytest.mark.parametrize(
+    'token_fabric',
+    ALL_TOKENS_FABRICS_WITH_CANCELLING_SUPERPOWER,
+)
+def test_manual_cancellation_message_overrides_active_superpower_with_optional_doc(token_fabric, doc_kwargs, expected_suffix):
+    """
+    Manual cancellation has priority over an active superpower.
+
+    Even when a token's superpower would already cancel it, `.cancel()` must make
+    `check()` raise the generic manual message with the optional `doc` suffix.
+    """
+    token = token_fabric(**doc_kwargs)
+    token.cancel()
+
+    with pytest.raises(CancellationError, match=match('The token has been cancelled.' + expected_suffix)) as exc_info:
+        token.check()
+
+    assert type(exc_info.value) is CancellationError
+    assert exc_info.value.token is token
+
+
+@pytest.mark.parametrize(
+    ('doc_kwargs', 'expected_suffix'),
+    [
+        ({}, ''),
+        ({'doc': None}, ''),
+        ({'doc': 'type-doc'}, " Token description: 'type-doc'."),
+        ({'doc': '  type-doc  '}, " Token description: '  type-doc  '."),
+        ({'doc': "type ' doc"}, ' Token description: "type \' doc".'),
+    ],
+)
+def test_superpower_and_impossible_cancel_messages_include_doc_only_when_present(doc_kwargs, expected_suffix):
+    """
+    Type-specific cancellation messages append `doc` only when it is present.
+
+    The same suffix rule is fixed for Condition, Counter, Timeout, and both
+    `DefaultToken` impossible-cancel paths.
+    """
+    for token_fabric in ALL_TOKENS_FABRICS_WITH_CANCELLING_SUPERPOWER:
+        token = token_fabric(**doc_kwargs)
+
+        with pytest.raises(token.exception, match=match(token._get_superpower_exception_message() + expected_suffix)) as exc_info:
+            token.check()
+
+        assert type(exc_info.value) is token.exception
+        assert exc_info.value.token is token
+
+    expected_impossible_message = match('You cannot cancel a default token.' + expected_suffix)
+    token = DefaultToken(**doc_kwargs)
+
+    with pytest.raises(ImpossibleCancelError, match=expected_impossible_message) as exc_info:
+        token.cancel()
+
+    assert type(exc_info.value) is ImpossibleCancelError
+    assert exc_info.value.token is token
+
+    token = DefaultToken(**doc_kwargs)
+
+    with pytest.raises(ImpossibleCancelError, match=expected_impossible_message) as exc_info:
+        token.cancelled = True
+
+    assert type(exc_info.value) is ImpossibleCancelError
+    assert exc_info.value.token is token
+
+
+@pytest.mark.parametrize(
+    'nested_token_fabric',
+    [
+        partial(SimpleToken, cancelled=True),
+        *ALL_TOKENS_FABRICS_WITH_CANCELLING_SUPERPOWER,
+    ],
+)
+@pytest.mark.parametrize(
+    'doc_case',
+    [
+        (None, ''),
+        ('nested-doc', " Token description: 'nested-doc'."),
+        ("nested ' doc", ' Token description: "nested \' doc".'),
+    ],
+)
+@pytest.mark.parametrize(
+    'parent_token_fabric',
+    ALL_TOKENS_FABRICS,
+)
+def test_nested_cancellation_message_uses_causing_token_doc(parent_token_fabric, nested_token_fabric, doc_case):
+    """
+    Nested cancellation messages describe the token that caused cancellation.
+
+    Parent `doc` must not leak into the message when a nested token is the
+    cancellation source.
+    """
+    doc, expected_suffix = doc_case
+    nested_token = nested_token_fabric(doc=doc)
+    token = parent_token_fabric(nested_token, doc='parent-doc')
+
+    with pytest.raises(nested_token.exception, match=match(nested_token._get_superpower_exception_message() + expected_suffix)) as exc_info:
+        token.check()
+
+    assert type(exc_info.value) is nested_token.exception
+    assert exc_info.value.token is nested_token
+
+
+@pytest.mark.parametrize(
+    'parent_token_fabric',
+    ALL_TOKENS_FABRICS,
+)
+def test_parent_manual_cancellation_message_takes_precedence_over_nested_doc(parent_token_fabric):
+    """
+    Parent manual cancellation takes precedence over a cancelled nested token.
+
+    The raised message must use the parent token and parent `doc`, not the
+    already-cancelled nested token description.
+    """
+    nested_token = SimpleToken(cancelled=True, doc='nested-doc')
+    token = parent_token_fabric(nested_token, doc='parent-doc')
+    token.cancel()
+
+    with pytest.raises(CancellationError, match=match("The token has been cancelled. Token description: 'parent-doc'.")) as exc_info:
+        token.check()
+
+    assert type(exc_info.value) is CancellationError
+    assert exc_info.value.token is token
+
+
+@pytest.mark.parametrize(
+    'parent_token_fabric',
+    ALL_TOKENS_FABRICS_WITH_CANCELLING_SUPERPOWER,
+)
+def test_parent_superpower_cancellation_message_takes_precedence_over_nested_doc(parent_token_fabric):
+    """
+    Parent superpower cancellation takes precedence over a cancelled nested token.
+
+    The type-specific message must use the parent token and parent `doc`, not
+    the already-cancelled nested token description.
+    """
+    nested_token = SimpleToken(cancelled=True, doc='nested-doc')
+    parent_token = parent_token_fabric(nested_token, doc='parent-doc')
+
+    with pytest.raises(parent_token.exception, match=match(f"{parent_token._get_superpower_exception_message()} Token description: 'parent-doc'.")) as exc_info:
+        parent_token.check()
+
+    assert type(exc_info.value) is parent_token.exception
+    assert exc_info.value.token is parent_token
+
+
+@pytest.mark.parametrize(
+    'parent_token_fabric',
+    ALL_TOKENS_FABRICS,
+)
+def test_cached_nested_cancellation_report_does_not_override_later_parent_manual_cancellation(parent_token_fabric):
+    """
+    A cached nested report must not hide later parent manual cancellation.
+
+    The test warms the nested-cancellation cache, cancels the parent afterwards,
+    and verifies that `check()` reports the parent and its `doc`.
+    """
+    nested_token = SimpleToken(cancelled=True, doc='nested-doc')
+    nested_report = CancellationReport(
+        cause=CancelCause.CANCELLED,
+        from_token=nested_token,
+    )
+    token = parent_token_fabric(nested_token, doc='parent-doc')
+
+    assert token.cancelled
+    assert token._cached_report == nested_report
+    token.cancel()
+
+    with pytest.raises(CancellationError, match=match("The token has been cancelled. Token description: 'parent-doc'.")) as exc_info:
+        token.check()
+
+    assert type(exc_info.value) is CancellationError
+    assert exc_info.value.token is token
+
+
+def test_cached_nested_cancellation_report_does_not_override_later_parent_superpower_cancellation(monkeypatch):
+    """
+    A cached nested report must not hide later parent superpower cancellation.
+
+    After warming the nested-cancellation cache, the test triggers each parent
+    superpower and verifies that `check()` reports the parent token with parent
+    `doc`.
+    """
+    nested_token = SimpleToken(cancelled=True, doc='nested-doc')
+    nested_report = CancellationReport(
+        cause=CancelCause.CANCELLED,
+        from_token=nested_token,
+    )
+
+    condition_is_satisfied = False
+    token = ConditionToken(lambda: condition_is_satisfied, nested_token, doc='parent-doc')
+
+    assert token.cancelled
+    assert token._cached_report == nested_report
+    condition_is_satisfied = True
+
+    with pytest.raises(token.exception, match=match(f"{token._get_superpower_exception_message()} Token description: 'parent-doc'.")) as exc_info:
+        token.check()
+
+    assert type(exc_info.value) is token.exception
+    assert exc_info.value.token is token
+
+    token = CounterToken(1, nested_token, doc='parent-doc')
+
+    assert token.cancelled
+    assert token._cached_report == nested_report
+
+    with pytest.raises(token.exception, match=match(f"{token._get_superpower_exception_message()} Token description: 'parent-doc'.")) as exc_info:
+        token.check()
+
+    assert type(exc_info.value) is token.exception
+    assert exc_info.value.token is token
+
+    current_time = 0.0
+    monkeypatch.setattr('cantok.tokens.timeout_token.perf_counter', lambda: current_time)
+    token = TimeoutToken(1, nested_token, doc='parent-doc')
+
+    assert token.cancelled
+    assert token._cached_report == nested_report
+    current_time = 2.0
+
+    with pytest.raises(token.exception, match=match(f"{token._get_superpower_exception_message()} Token description: 'parent-doc'.")) as exc_info:
+        token.check()
+
+    assert type(exc_info.value) is token.exception
+    assert exc_info.value.token is token
+
+
+@pytest.mark.parametrize(
+    'first_token_fabric',
+    [
+        partial(SimpleToken, cancelled=True),
+        *ALL_TOKENS_FABRICS_WITH_CANCELLING_SUPERPOWER,
+    ],
+)
+@pytest.mark.parametrize(
+    'second_token_fabric',
+    [
+        partial(SimpleToken, cancelled=True),
+        *ALL_TOKENS_FABRICS_WITH_CANCELLING_SUPERPOWER,
+    ],
+)
+def test_first_cancelled_nested_token_wins_over_later_sibling(first_token_fabric, second_token_fabric):
+    """
+    The first cancelled nested token supplies the cancellation message.
+
+    When several nested tokens are already cancelled, `_tokens` order chooses
+    the exception class, message, and `doc` suffix.
+    """
+    first_token = first_token_fabric(doc='first-doc')
+    second_token = second_token_fabric(doc='second-doc')
+    token = SimpleToken(first_token, second_token)
+
+    with pytest.raises(first_token.exception, match=match(f"{first_token._get_superpower_exception_message()} Token description: 'first-doc'.")) as exc_info:
+        token.check()
+
+    assert type(exc_info.value) is first_token.exception
+    assert exc_info.value.token is first_token
+
+
+@pytest.mark.parametrize(
+    'token_fabric',
+    [*ALL_TOKENS_FABRICS, DefaultToken],
+)
+def test_internal_wait_timeout_does_not_inherit_outer_token_doc(token_fabric):
+    """
+    The internal timeout token created by `wait()` must not inherit outer `doc`.
+
+    A wait timeout still raises the old timeout message and exposes a plain
+    internal `TimeoutToken` with `doc is None`.
+    """
+    with pytest.raises(TimeoutCancellationError, match=match('The timeout of 0 seconds has expired.')) as exc_info:
+        token_fabric(doc='outer-doc').wait(step=0, timeout=0)
+
+    timeout_token = exc_info.value.token
+    assert repr(timeout_token) == 'TimeoutToken(0)'
+    assert timeout_token.doc is None
+
+
+@pytest.mark.parametrize(
+    'doc',
+    [
+        1,
+        True,
+        False,
+        [],
+    ],
+)
+@pytest.mark.parametrize(
+    'token_fabric',
+    [*ALL_TOKENS_FABRICS, DefaultToken],
+)
+def test_invalid_doc_type_is_rejected_for_all_tokens(token_fabric, doc):
+    """
+    Non-`None`, non-string token descriptions are rejected by every public token.
+
+    Each factory receives otherwise valid constructor arguments plus invalid
+    `doc`, and must raise the shared `TypeError` message.
+    """
+    with pytest.raises(TypeError, match=match('The token description must be a string.')):
+        token_fabric(doc=doc)
+
+
+@pytest.mark.parametrize(
+    'token_fabric',
+    [*ALL_TOKENS_FABRICS, DefaultToken],
+)
+def test_empty_doc_is_rejected_for_all_tokens(token_fabric):
+    """
+    Empty string descriptions are rejected by every public token.
+
+    The test fixes the shared `ValueError` message for `doc=''`.
+    """
+    with pytest.raises(ValueError, match=match('The token description cannot be empty.')):
+        token_fabric(doc='')
+
+
+@pytest.mark.parametrize(
+    'doc',
+    [
+        ' ',
+        '   ',
+        '\t\n',
+    ],
+)
+@pytest.mark.parametrize(
+    'token_fabric',
+    [*ALL_TOKENS_FABRICS, DefaultToken],
+)
+def test_whitespace_only_doc_is_rejected_for_all_tokens(token_fabric, doc):
+    """
+    Whitespace-only descriptions are rejected with the whitespace-only diagnostic.
+
+    Different whitespace shapes must raise the dedicated `ValueError` message.
+    """
+    with pytest.raises(ValueError, match=match('The token description cannot be empty (the passed string contains only whitespace characters).')):
+        token_fabric(doc=doc)
+
+
+@pytest.mark.parametrize(
+    ('token_fabric', 'expected_repr'),
+    [
+        (SimpleToken, "SimpleToken(doc='  d  ')"),
+        (partial(ConditionToken, lambda: False), "ConditionToken(λ, doc='  d  ')"),
+        (partial(CounterToken, 1), "CounterToken(1, doc='  d  ')"),
+        (partial(TimeoutToken, 1), "TimeoutToken(1, doc='  d  ')"),
+        (DefaultToken, "DefaultToken(doc='  d  ')"),
+    ],
+)
+def test_non_blank_doc_with_surrounding_whitespace_is_allowed_and_preserved(token_fabric, expected_repr):
+    """
+    Non-blank descriptions with surrounding whitespace stay valid.
+
+    The test verifies both public `doc` storage and repr preservation without
+    stripping.
+    """
+    doc = '  d  '
+    token = token_fabric(doc=doc)
+
+    assert token.doc == doc
+    assert repr(token) == expected_repr
+
+
+@pytest.mark.parametrize(
+    ('trigger_non_cancellation_error', 'exception_type', 'expected_message'),
+    [
+        (
+            lambda: setattr(SimpleToken(cancelled=True, doc='d'), 'cancelled', False),
+            ValueError,
+            'You cannot restore a cancelled token.',
+        ),
+        (
+            lambda: SimpleToken(doc='d') + 1,
+            TypeError,
+            'Cancellation Token can only be combined with another Cancellation Token.',
+        ),
+        (
+            lambda: CounterToken(-1, doc='d'),
+            ValueError,
+            'The counter must be greater than or equal to zero.',
+        ),
+        (
+            lambda: TimeoutToken(-1, doc='d'),
+            ValueError,
+            'You cannot specify a timeout less than zero.',
+        ),
+        (
+            lambda: ConditionToken(lambda: 'not bool', suppress_exceptions=False, doc='d').cancelled,
+            TypeError,
+            'The condition function can only return a bool value. The passed function returned "not bool" (str).',
+        ),
+        (
+            lambda: SimpleToken(doc='d').wait(step=-1),
+            ValueError,
+            'The token polling iteration time cannot be less than zero.',
+        ),
+    ],
+)
+def test_non_cancellation_errors_do_not_include_doc(trigger_non_cancellation_error, exception_type, expected_message):
+    """
+    `doc` must not change non-cancellation errors.
+
+    The cases cover explicit cantok errors outside cancellation reporting and
+    verifies their old type and message without the `doc` suffix.
+    """
+    with pytest.raises(exception_type, match=match(expected_message)) as exc_info:
+        trigger_non_cancellation_error()
+
+    assert type(exc_info.value) is exception_type
 
 
 @pytest.mark.parametrize(

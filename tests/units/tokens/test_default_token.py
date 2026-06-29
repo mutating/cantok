@@ -52,6 +52,28 @@ def test_str_for_default_token():
     assert str(DefaultToken()) == '<DefaultToken (not cancelled)>'
 
 
+def test_str_with_doc_is_unchanged_for_default_token():
+    """
+    `doc` must not affect `str(DefaultToken())`.
+
+    The exact `str()` text is covered by `test_str_for_default_token`, so this
+    test only compares equivalent default tokens with and without `doc`.
+    """
+    assert str(DefaultToken(doc='visible-doc')) == str(DefaultToken())
+
+
+def test_repr_for_default_token():
+    """
+    `DefaultToken` repr follows the shared `doc` contract.
+
+    Omitted and explicit `None` keep the old repr; valid and escaped text is
+    emitted as the final `doc` keyword.
+    """
+    assert repr(DefaultToken()) == repr(DefaultToken(doc=None)) == 'DefaultToken()'
+    assert repr(DefaultToken(doc='d')) == "DefaultToken(doc='d')"
+    assert repr(DefaultToken(doc="escaped ' doc")) == 'DefaultToken(doc="escaped \' doc")'
+
+
 @pytest.mark.skipif(sys.version_info >= (3, 10), reason='Format of this exception messages was changed.')
 def test_you_cannot_neste_another_token_to_default_one_old_pythons():
     with pytest.raises(TypeError, match=match('__init__() takes 1 positional argument but 2 were given')):
@@ -109,5 +131,3 @@ def test_default_token_plus_bound_simple_token():
     assert len(total._tokens) == 1
     assert total is not simple_token
     assert total._tokens[0] is simple_token
-
-
