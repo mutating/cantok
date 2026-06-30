@@ -1,3 +1,5 @@
+> ⚠️ `CounterToken` is deprecated. A new mechanism for limiting attempts and iterations will be introduced in future releases.
+
 `CounterToken` is the least intuitive of the tokens provided by this library. Do not use it if you are not sure that you understand how it works. However, it can be very useful in situations where you want to limit the number of attempts to perform an operation.
 
 `CounterToken` is initialized with an integer greater than or equal to zero. Each time cancellation is checked, this number is decremented by one. When this number becomes zero, the token is considered cancelled:
