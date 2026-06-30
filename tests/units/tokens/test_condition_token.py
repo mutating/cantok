@@ -7,6 +7,7 @@ from cantok.tokens.abstract.abstract_token import CancelCause, CancellationRepor
 
 
 def test_condition_counter():
+    """Verify repeated condition polling stops after exactly five false results."""
     loop_size = 5
     def condition():
         for _number in range(loop_size):
@@ -24,12 +25,18 @@ def test_condition_counter():
 
 
 def test_condition_false():
+    """A false condition leaves a new condition token active across all status APIs."""
     assert ConditionToken(lambda: False).cancelled == False
     assert ConditionToken(lambda: False).is_cancelled() == False
     assert ConditionToken(lambda: False).keep_on() == True
 
 
 def test_condition_true():
+    """
+    Treat a true condition result as immediate cancellation.
+
+    The cancelled and is_cancelled status APIs report True, while keep_on returns False.
+    """
     assert ConditionToken(lambda: True).cancelled == True
     assert ConditionToken(lambda: True).is_cancelled() == True
     assert ConditionToken(lambda: True).keep_on() == False
@@ -51,17 +58,30 @@ def test_condition_true():
     ([ConditionToken(lambda: False), ConditionToken(lambda: False), ConditionToken(lambda: False)], False),
 ])
 def test_just_created_condition_token_with_arguments(arguments, expected_cancelled_status):
+    """
+    Propagate embedded token cancellation even when the condition is false.
+
+    Verify that constructor-provided tokens determine the wrapper status through
+    cancelled, is_cancelled(), and keep_on().
+    """
     assert ConditionToken(lambda: False, *arguments).cancelled == expected_cancelled_status
     assert ConditionToken(lambda: False, *arguments).is_cancelled() == expected_cancelled_status
     assert ConditionToken(lambda: False, *arguments).keep_on() == (not expected_cancelled_status)
 
 
 def test_raise_without_first_argument():
+    """Omitting the required condition callable is rejected by the condition-token constructor."""
     with pytest.raises(TypeError):
         ConditionToken()
 
 
 def test_suppress_exception_false():
+    """
+    Disabled exception suppression propagates condition callable failures.
+
+    Reading the cancellation state should raise the original ValueError from the
+    condition instead of converting it into a cancellation result.
+    """
     def condition():
         raise ValueError('error')
 
@@ -72,6 +92,7 @@ def test_suppress_exception_false():
 
 
 def test_suppress_exception_true():
+    """Keep an explicitly suppressing condition token active when its condition raises."""
     def condition():
         raise ValueError
 
@@ -81,6 +102,7 @@ def test_suppress_exception_true():
 
 
 def test_suppress_exception_default_true():
+    """Omitting `suppress_exceptions` suppresses condition errors and leaves the token active by default."""
     def condition():
         raise ValueError
 
@@ -90,6 +112,12 @@ def test_suppress_exception_default_true():
 
 
 def test_condition_function_returning_not_bool_value():
+    """
+    Non-bool condition results obey suppression instead of truthiness.
+
+    Suppressed mode falls back to default=False, while strict mode raises TypeError
+    when cancellation state is read.
+    """
     assert ConditionToken(lambda: 'kek', suppress_exceptions=True).cancelled == False
     assert ConditionToken(lambda: 'kek').cancelled == False
 
@@ -102,6 +130,7 @@ def test_condition_function_returning_not_bool_value():
     [True, False],
 )
 def test_default_if_exception(default):
+    """Suppressed condition exceptions use the configured default as the cancellation state."""
     def condition():
         raise ValueError
 
@@ -115,6 +144,7 @@ def test_default_if_exception(default):
     [True, False],
 )
 def test_default_if_not_bool(default):
+    """Use the configured default for suppressed non-bool condition results."""
     def condition():
         return 'kek'
 
@@ -124,6 +154,7 @@ def test_default_if_not_bool(default):
 
 
 def test_check_superpower_raised():
+    """`check()` raises `ConditionCancellationError` for a directly satisfied condition."""
     token = ConditionToken(lambda: True)
 
     with pytest.raises(ConditionCancellationError):
@@ -136,6 +167,12 @@ def test_check_superpower_raised():
 
 
 def test_check_superpower_raised_nested():
+    """
+    Nested condition superpower exceptions come from the nested token.
+
+    A neutral SimpleToken wrapper must surface the nested ConditionToken's exception
+    type and token owner when the condition is already satisfied.
+    """
     nested_token = ConditionToken(lambda: True)
     token = SimpleToken(nested_token)
 
@@ -150,6 +187,7 @@ def test_check_superpower_raised_nested():
 
 
 def test_get_report_cancelled():
+    """Report a satisfied condition as this token's own CancellationReport superpower."""
     token = ConditionToken(lambda: True)
 
     report = token._get_report()
@@ -168,6 +206,13 @@ def test_get_report_cancelled():
     ],
 )
 def test_get_report_cancelled_nested(cancelled, cancelled_nested, from_token_is_nested):
+    """
+    Report which condition token cancels a nested chain as a CancellationReport.
+
+    Parent conditions take precedence, and nested SUPERPOWER reports propagate only
+    when the parent condition does not cancel. The checked cases are parent-only,
+    nested-only, and both conditions true.
+    """
     nested_token = ConditionToken(lambda: cancelled_nested)
     token = ConditionToken(lambda: cancelled, nested_token)
 
@@ -190,6 +235,11 @@ def test_get_report_cancelled_nested(cancelled, cancelled_nested, from_token_is_
     ],
 )
 def test_order_of_callbacks(options):
+    """
+    Verify check calls before, condition, and after in order.
+
+    This holds across suppression modes when the condition does not cancel.
+    """
     lst = []
     token = ConditionToken(lambda: lst.append(2) is not None, before=lambda: lst.append(1), after=lambda: lst.append(3), **options)
 
@@ -206,6 +256,13 @@ def test_order_of_callbacks(options):
     ],
 )
 def test_raise_suppressed_exception_in_before_callback(options):
+    """
+    Ensure a suppressed before-callback exception does not abort the check.
+
+    Through `check()`, both default suppression and explicit `suppress_exceptions=True`
+    must still run a non-cancelling condition and the after callback in order, and
+    `check()` should return normally.
+    """
     lst = []
 
     def before_callback():
@@ -227,6 +284,12 @@ def test_raise_suppressed_exception_in_before_callback(options):
     ],
 )
 def test_raise_suppressed_exception_in_after_callback(options):
+    """
+    Confirm suppressed after-callback exceptions do not make check fail.
+
+    Through `check()`, both default suppression and explicit `suppress_exceptions=True`
+    must still observe the before, condition, and after side effects in order.
+    """
     lst = []
 
     def after_callback():
@@ -241,6 +304,12 @@ def test_raise_suppressed_exception_in_after_callback(options):
 
 
 def test_raise_not_suppressed_exception_in_before_callback():
+    """
+    Propagate unsuppressed before-callback exceptions from check().
+
+    Ensure the failed before callback short-circuits polling before the condition
+    callback can run.
+    """
     lst = []
 
     token = ConditionToken(lambda: lst.append(2) is not None, before=lambda: 1 / 0, suppress_exceptions=False)
@@ -252,6 +321,12 @@ def test_raise_not_suppressed_exception_in_before_callback():
 
 
 def test_raise_not_suppressed_exception_in_after_callback():
+    """
+    Re-raise an unsuppressed after-callback exception from check().
+
+    The before callback and condition callable have already run, preserving their
+    side effects before the original exception escapes.
+    """
     lst = []
 
     token = ConditionToken(lambda: lst.append(2) is not None, before=lambda: lst.append(1), after=lambda: 1 / 0, suppress_exceptions=False)
@@ -271,6 +346,12 @@ def test_raise_not_suppressed_exception_in_after_callback():
     ],
 )
 def test_cached_condition_cancelling(options):
+    """
+    Verify only cached condition cancellation stays sticky after wait observes it.
+
+    Default and explicit caching keep the condition counter at 3 across later
+    public checks, while caching=False re-polls past the one true result.
+    """
     counter = 0
 
     def condition():
@@ -302,6 +383,12 @@ def test_cached_condition_cancelling(options):
 
 
 def test_condition_token_plus_simple_token():
+    """
+    Verify that ConditionToken + SimpleToken preserves structural composition.
+
+    The sum is a fresh SimpleToken wrapper that stores the original operands by
+    identity in left-to-right order, with the condition token first.
+    """
     simple_token = SimpleToken()
     condition_token = ConditionToken(lambda: False)
     token = condition_token + simple_token
@@ -315,6 +402,7 @@ def test_condition_token_plus_simple_token():
 
 
 def test_simple_token_plus_condition_token():
+    """Create a fresh composition wrapper that preserves simple and condition operands in order."""
     simple_token = SimpleToken()
     condition_token = ConditionToken(lambda: False)
     token = simple_token + condition_token
@@ -328,6 +416,13 @@ def test_simple_token_plus_condition_token():
 
 
 def test_condition_function_is_more_important_than_cache():
+    """
+    A newly true condition outranks a cached nested cancellation report.
+
+    After a cancelled child has provided the initial direct and indirect reports,
+    flipping the parent condition to true should make both report paths attribute
+    SUPERPOWER cancellation to the condition token itself.
+    """
     flag = False
     inner_token = SimpleToken(cancelled=True)
     token = ConditionToken(lambda: flag, inner_token)
@@ -348,11 +443,18 @@ def test_condition_function_is_more_important_than_cache():
 
 
 def test_zero_condition_token_report_is_about_superpower():
+    """
+    Classify an immediately true condition as superpower cancellation.
+
+    Both direct and indirect raw report polls should expose the condition
+    superpower before nested-token or cache behavior can matter.
+    """
     for report in ConditionToken(lambda: True)._get_report(True), ConditionToken(lambda: True)._get_report(False):
         assert report.cause == CancelCause.SUPERPOWER
 
 
 def test_creating_condition_token_with_no_suppress_exceptions_is_not_calling_condition():
+    """Creating a non-suppressing condition token does not call its condition."""
     calls = []
 
     ConditionToken(lambda: calls.append(True) is None, suppress_exceptions=False)
@@ -401,6 +503,12 @@ def test_repr_of_condition_token():
 
 
 def test_repr_for_class_based_function():
+    """
+    Represent class-based callable conditions with their own repr.
+
+    This guards the fallback for callables without __name__ and proves __repr__
+    is used instead of __str__.
+    """
     class SomeChecker:
         def __call__(self) -> bool:
             return True

@@ -7,6 +7,12 @@ from cantok.tokens.abstract.abstract_token import CancelCause, CancellationRepor
 
 
 def test_counter_token_is_deprecated():
+    """
+    Ensure CounterToken construction emits the public deprecation warning.
+
+    The test checks the warning category and stable message prefix only; counter
+    behavior is covered by dedicated tests.
+    """
     with pytest.warns(DeprecationWarning, match='CounterToken is deprecated'):
         CounterToken(1)
 
@@ -21,6 +27,11 @@ def test_counter_token_is_deprecated():
     ],
 )
 def test_counter(iterations):
+    """
+    Stop a direct polling loop after exactly the configured number of iterations.
+
+    The zero-count boundary cancels before the loop body runs.
+    """
     token = CounterToken(iterations)
     counter = 0
 
@@ -31,12 +42,24 @@ def test_counter(iterations):
 
 
 def test_double_str():
+    """
+    Ensure rendering the same one-attempt counter token twice is stable.
+
+    The test compares the two string results directly instead of pinning the exact
+    text, and this repeated rendering must not consume the counter.
+    """
     token = CounterToken(1)
 
     assert str(token) == str(token)  # noqa: PLR0124
 
 
 def test_counter_less_than_zero():
+    """
+    Reject negative initial counters at construction.
+
+    CounterToken only accepts non-negative iteration limits, with zero as the
+    valid lower boundary.
+    """
     with pytest.raises(ValueError, match=r'.'):
         CounterToken(-1)
 
@@ -58,6 +81,7 @@ def test_counter_less_than_zero():
     ],
 )
 def test_race_condition_for_counter(iterations, number_of_threads):
+    """Ensure concurrent direct polls consume exactly the configured counter."""
     results = []
     token = CounterToken(iterations)
 
@@ -88,6 +112,13 @@ def test_race_condition_for_counter(iterations, number_of_threads):
     ],
 )
 def test_direct_default_counter(kwargs, expected_result):
+    """
+    Verify indirect parent polling honors the CounterToken `direct` option.
+
+    Polling through SimpleToken must not consume default/direct=True counters, must
+    consume direct=False counters, and direct polling the nested token still
+    decrements afterward.
+    """
     nested_token = CounterToken(5, **kwargs)
     token = SimpleToken(nested_token)
 
@@ -99,6 +130,11 @@ def test_direct_default_counter(kwargs, expected_result):
 
 
 def test_check_superpower_raised():
+    """
+    Check raises CounterCancellationError after a standalone five-attempt CounterToken exhausts.
+
+    Repeated checks keep reporting the exhausted token with the original attempt limit in the message.
+    """
     token = CounterToken(5)
 
     while not token.cancelled:
@@ -114,6 +150,13 @@ def test_check_superpower_raised():
 
 
 def test_check_superpower_raised_nested():
+    """
+    Parent check preserves a nested five-attempt CounterToken cancellation attribution.
+
+    The nested counter is `direct=False`, so parent polling can exhaust it; repeated
+    parent checks then raise with the nested counter's exception type, message, and
+    token attribution.
+    """
     nested_token = CounterToken(5, direct=False)
     token = SimpleToken(nested_token)
 
@@ -131,6 +174,7 @@ def test_check_superpower_raised_nested():
 
 
 def test_get_report_cancelled():
+    """Verify that ordinary polling reports an exhausted standalone CounterToken as its own superpower cancellation."""
     token = CounterToken(5)
 
     while not token.cancelled:
@@ -152,6 +196,14 @@ def test_get_report_cancelled():
     ],
 )
 def test_get_report_cancelled_nested(counter, counter_nested, from_token_is_nested):
+    """
+    Report the first counter superpower in parent-first nested order.
+
+    When both counters are already exhausted the parent owns the report, but if
+    the parent starts at one and only reaches zero during this lookup, the
+    already-exhausted nested counter remains the reported source. The report is
+    always a CancellationReport with SUPERPOWER cause.
+    """
     nested_token = CounterToken(counter_nested)
     token = CounterToken(counter, nested_token)
 
@@ -184,6 +236,7 @@ def test_get_report_cancelled_nested(counter, counter_nested, from_token_is_nest
     ],
 )
 def test_check_is_decrementing_counter(function, initial_counter, final_counter):
+    """Direct CounterToken checks consume one attempt without decrementing below zero."""
     token = CounterToken(initial_counter)
 
     try:
@@ -195,6 +248,12 @@ def test_check_is_decrementing_counter(function, initial_counter, final_counter)
 
 
 def test_check_is_decrementing_counter_when_nested_token_is_cancelled():
+    """
+    Check still consumes a two-attempt parent counter while nested cancellation is reported.
+
+    The check that reaches zero keeps raising from the nested token; the next check
+    raises from the parent counter superpower.
+    """
     nested_token = SimpleToken(cancelled=True)
     token = CounterToken(2, nested_token)
 
@@ -222,6 +281,7 @@ def test_check_is_decrementing_counter_when_nested_token_is_cancelled():
 
 
 def test_decrement_counter_after_zero():
+    """Direct polling an already exhausted CounterToken leaves its counter at zero."""
     token = CounterToken(0)
 
     token.is_cancelled()
@@ -230,6 +290,12 @@ def test_decrement_counter_after_zero():
 
 
 def test_counter_token_plus_simple_token():
+    """
+    Check that CounterToken + SimpleToken preserves operands in order.
+
+    The composed token is a fresh SimpleToken wrapper containing the original
+    counter token first and the original simple token second.
+    """
     simple_token = SimpleToken()
     counter_token = CounterToken(1)
     token = counter_token + simple_token
@@ -243,6 +309,12 @@ def test_counter_token_plus_simple_token():
 
 
 def test_simple_token_plus_counter_token():
+    """
+    Adding a counter token on the right creates an ordered simple composite.
+
+    The composite preserves the original simple token and counter token identities
+    in left-to-right order.
+    """
     simple_token = SimpleToken()
     counter_token = CounterToken(1)
     token = simple_token + counter_token
@@ -256,6 +328,11 @@ def test_simple_token_plus_counter_token():
 
 
 def test_zero_counter_token_report_is_about_superpower():
+    """
+    Report an initially exhausted counter token as cancelled by its own superpower.
+
+    Both direct and indirect report checks should classify a zero-count token as superpower-cancelled despite indirect polling rollback behavior.
+    """
     for report in CounterToken(0)._get_report(True), CounterToken(0)._get_report(False):
         assert report.cause == CancelCause.SUPERPOWER
 
