@@ -3,6 +3,8 @@ from threading import RLock
 from time import sleep
 from typing import Any, Dict, List, Optional, Union
 
+from printo import describe_call, not_none
+
 from cantok.errors import CancellationError
 from cantok.tokens.abstract.cancel_cause import CancelCause
 from cantok.tokens.abstract.report import CancellationReport
@@ -64,32 +66,27 @@ class AbstractToken(ABC):
         self._lock: RLock = RLock()
 
     def __repr__(self) -> str:
-        chunks = []
         superpower = self._text_representation_of_superpower()
-        if superpower:
-            chunks.append(superpower)
-        other_tokens = ', '.join([repr(x) for x in self._tokens])
-        if other_tokens:
-            chunks.append(other_tokens)
         report = self._get_report(direct=False)
-        extra_kwargs: Dict[str, Any]
-        if report.cause == CancelCause.NOT_CANCELLED:
-            extra_kwargs = {}
-        elif report.from_token is self and report.cause == CancelCause.CANCELLED:
-            extra_kwargs = {'cancelled': True}
-        else:
-            extra_kwargs = {}
-        extra_kwargs.update(**(self._get_extra_kwargs()))
-        if self.doc is not None:
-            extra_kwargs['doc'] = self.doc
-        text_representation_of_extra_kwargs = self._text_representation_of_kwargs(
-            **extra_kwargs,
-        )
-        if text_representation_of_extra_kwargs:
-            chunks.append(text_representation_of_extra_kwargs)
+        cancelled = report.from_token is self and report.cause == CancelCause.CANCELLED
 
-        glued_chunks = ', '.join(chunks)
-        return f'{type(self).__name__}({glued_chunks})'
+        return describe_call(
+            type(self).__name__,
+            [superpower, *self._tokens],
+            {
+                'cancelled': cancelled,
+                **self._get_extra_kwargs(),
+                'doc': self.doc,
+            },
+            filters={
+                0: lambda argument: bool(argument),
+                'cancelled': lambda argument: bool(argument),
+                'doc': not_none,
+            },
+            placeholders={
+                0: superpower,
+            },
+        )
 
     def __str__(self) -> str:
         cancelled_flag = (
