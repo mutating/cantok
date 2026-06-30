@@ -33,6 +33,7 @@ ALL_TOKENS_FABRICS_WITH_NOT_CANCELLING_SUPERPOWER = [partial(token_class, *argum
 
 
 def test_cant_instantiate_abstract_token():
+    """Keep the abstract base token non-instantiable."""
     with pytest.raises(TypeError):
         AbstractToken()
 
@@ -62,6 +63,12 @@ def test_doc_attribute_stores_optional_description_for_all_tokens(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_cancelled_true_as_parameter(token_fabric, cancelled_flag):
+    """
+    Honor the initial cancelled flag for every regular concrete token.
+
+    Each regular token type should report the requested initial status through
+    cancelled, is_cancelled(), keep_on(), and check(), for both true and false flags.
+    """
     token = token_fabric(cancelled=cancelled_flag)
 
     assert token.cancelled == cancelled_flag
@@ -89,6 +96,7 @@ def test_cancelled_true_as_parameter(token_fabric, cancelled_flag):
     ALL_TOKENS_FABRICS,
 )
 def test_change_attribute_cancelled(token_fabric, first_cancelled_flag, second_cancelled_flag, expected_value):
+    """Changing cancelled is a one-way manual cancellation control."""
     token = token_fabric(cancelled=first_cancelled_flag)
 
     if expected_value is None:
@@ -113,6 +121,7 @@ def test_change_attribute_cancelled(token_fabric, first_cancelled_flag, second_c
     ALL_TOKENS_FABRICS,
 )
 def test_set_cancelled_false_if_this_token_is_not_cancelled_but_nested_token_is(token_fabric):
+    """Setting a parent token active cannot hide cancellation inherited from a nested token."""
     token = token_fabric(SimpleToken(cancelled=True))
 
     with pytest.raises(ValueError, match=match('You cannot restore a cancelled token.')):
@@ -146,6 +155,7 @@ def test_repr(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_repr_with_another_token(token_fabric):
+    """Nested tokens appear in repr as constructor-style positional arguments."""
     nested_token = token_fabric()
     token = token_fabric(nested_token)
 
@@ -188,6 +198,7 @@ def test_default_token_with_doc_remains_neutral_in_composition(first_token_fabri
     ALL_TOKENS_FABRICS,
 )
 def test_str(token_fabric):
+    """Report each regular token class and its current cancellation state."""
     token = token_fabric()
 
     assert str(token) == '<' + type(token).__name__ + ' (not cancelled)>'
@@ -711,6 +722,11 @@ def test_non_cancellation_errors_do_not_include_doc(trigger_non_cancellation_err
     ALL_TOKENS_FABRICS,
 )
 def test_add_bound_tokens(first_token_fabric, second_token_fabric):
+    """
+    Adding two bound regular tokens creates a new wrapper around both originals.
+
+    The wrapper preserves the left-to-right operand order.
+    """
     first_token = first_token_fabric()
     second_token = second_token_fabric()
 
@@ -733,6 +749,12 @@ def test_add_bound_tokens(first_token_fabric, second_token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_inline_tokens(first_token_fabric, second_token_fabric):
+    """
+    Retain inline non-default operands when composing tokens.
+
+    The resulting sum should preserve both operand token types in order, even
+    though the operands were created only for the addition expression.
+    """
     tokens_sum = first_token_fabric() + second_token_fabric()
 
     assert isinstance(tokens_sum, SimpleToken)
@@ -746,6 +768,12 @@ def test_add_inline_tokens(first_token_fabric, second_token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_default_token_and_inline_token(token_fabric):
+    """
+    Treat an inline left DefaultToken as neutral in token composition.
+
+    Only the inline non-default token remains nested, so the surviving operand is
+    verified by type rather than identity.
+    """
     tokens_sum = DefaultToken() + token_fabric()
 
     assert isinstance(tokens_sum, SimpleToken)
@@ -758,6 +786,11 @@ def test_add_default_token_and_inline_token(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_inline_token_and_default_token(token_fabric):
+    """
+    Treat a right-hand default token as neutral when adding an inline token.
+
+    The sum is a simple token that embeds only the inline non-default token type.
+    """
     tokens_sum = token_fabric() + DefaultToken()
 
     assert isinstance(tokens_sum, SimpleToken)
@@ -778,6 +811,12 @@ def test_add_inline_token_and_default_token(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_three_tokens_keeps_intermediate_sum(first_token_fabric, second_token_fabric, third_token_fabric):
+    """
+    Chained addition keeps the left intermediate sum as an operand.
+
+    The three-token chain remains left-associative instead of flattening all
+    original tokens into one direct child list.
+    """
     first_token = first_token_fabric()
     second_token = second_token_fabric()
     third_token = third_token_fabric()
@@ -797,6 +836,7 @@ def test_add_three_tokens_keeps_intermediate_sum(first_token_fabric, second_toke
     ALL_TOKENS_FABRICS,
 )
 def test_add_empty_simple_token_intermediate_as_regular_operand(token_fabric):
+    """Ensure an empty SimpleToken intermediate remains a live operand in later sums."""
     empty_sum = DefaultToken() + DefaultToken()
     another_token = token_fabric()
 
@@ -818,6 +858,12 @@ def test_add_empty_simple_token_intermediate_as_regular_operand(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_cancelled_first_operand_keeps_original_operand(token_fabric):
+    """
+    Preserve a cancelled left operand when composing tokens.
+
+    The new sum keeps both original operands in order and is cancelled because the
+    stored left operand was already cancelled.
+    """
     cancelled_token = token_fabric(cancelled=True)
     another_token = SimpleToken()
 
@@ -835,6 +881,12 @@ def test_add_cancelled_first_operand_keeps_original_operand(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_cancelled_second_operand_keeps_original_operand(token_fabric):
+    """
+    Ensure summation keeps a pre-cancelled right operand by identity.
+
+    The resulting token should be cancelled through that nested operand without
+    replacing, flattening, or dropping it.
+    """
     another_token = SimpleToken()
     cancelled_token = token_fabric(cancelled=True)
 
@@ -852,6 +904,10 @@ def test_add_cancelled_second_operand_keeps_original_operand(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_preserves_link_to_attribute_operand_on_right(stored_token_fabric):
+    """
+    Composing a neutral left operand with an instance-attribute token keeps that token linked.
+
+    Cancelling the attribute token after the sum is created must still cancel the sum."""
     class Holder:
         def __init__(self, token):
             self.token = token
@@ -875,6 +931,11 @@ def test_add_preserves_link_to_attribute_operand_on_right(stored_token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_preserves_link_to_attribute_operand_on_left(stored_token_fabric):
+    """
+    Preserve a live left-hand attribute operand when composing with a default token.
+
+    Cancelling the holder's token after composition must be reflected by the composed token.
+    """
     class Holder:
         def __init__(self, token):
             self.token = token
@@ -902,6 +963,11 @@ def test_add_preserves_link_to_attribute_operand_on_left(stored_token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_preserves_link_to_attribute_operand_with_extra_token(extra_token_fabric, stored_token_fabric):
+    """
+    Attribute operands stay live when composed with an additional non-default token.
+
+    Cancelling `holder.token` after composition must still cancel the already-created sum.
+    """
     class Holder:
         def __init__(self, token):
             self.token = token
@@ -925,6 +991,12 @@ def test_add_preserves_link_to_attribute_operand_with_extra_token(extra_token_fa
     ALL_TOKENS_FABRICS,
 )
 def test_add_inside_generator_preserves_link_to_attribute_operand(stored_token_fabric):
+    """
+    Ensure generator-created sums keep live attribute-token cancellation links.
+
+    Cancelling the original attribute token after the first yield must still cancel
+    the already-created combined token when the generator resumes.
+    """
     class Crawler:
         def __init__(self, token):
             self.token = token
@@ -951,6 +1023,12 @@ def test_add_inside_generator_preserves_link_to_attribute_operand(stored_token_f
     ALL_TOKENS_FABRICS,
 )
 def test_add_preserves_link_to_property_operand(stored_token_fabric):
+    """
+    Property-returned operands remain live links in token sums.
+
+    Ensure a stored token exposed and later cancelled through a property is still
+    observed after composition with neutral DefaultToken() on the left.
+    """
     class Holder:
         def __init__(self, token):
             self._token = token
@@ -977,6 +1055,13 @@ def test_add_preserves_link_to_property_operand(stored_token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_preserves_link_to_list_item_operand(stored_token_fabric):
+    """
+    Keep a list-indexed token operand linked into the composed token.
+
+    Cancelling the stored list item after addition with neutral DefaultToken() must
+    still cancel the sum, guarding against treating the indexed operand as a
+    disposable temporary.
+    """
     class Holder:
         def __init__(self, token):
             self.tokens = [token]
@@ -999,6 +1084,12 @@ def test_add_preserves_link_to_list_item_operand(stored_token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_preserves_link_to_dict_item_operand(stored_token_fabric):
+    """
+    Dict-item operands must remain linked after token summation.
+
+    After summation with neutral DefaultToken() on the left, the combined token
+    should observe cancellation of the token still stored under the dict key.
+    """
     class Holder:
         def __init__(self, token):
             self.tokens = {'main': token}
@@ -1021,6 +1112,12 @@ def test_add_preserves_link_to_dict_item_operand(stored_token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_preserves_link_to_nested_attribute_operand(stored_token_fabric):
+    """
+    Nested-attribute operands remain live links in token sums.
+
+    After summation with neutral DefaultToken(), the composed token must observe
+    later cancellation through the original child token.
+    """
     class Child:
         def __init__(self, token):
             self.token = token
@@ -1048,6 +1145,12 @@ def test_add_preserves_link_to_nested_attribute_operand(stored_token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_preserves_link_to_class_attribute_operand(stored_token_fabric):
+    """
+    Ensure addition keeps the live class-attribute token read through an instance.
+
+    After summation as `DefaultToken() + holder.token`, cancelling the token through
+    the class later must cancel the composed token.
+    """
     class Holder:
         token: AbstractToken
 
@@ -1070,6 +1173,13 @@ def test_add_preserves_link_to_class_attribute_operand(stored_token_fabric):
     ALL_TOKENS_FABRICS_WITH_NOT_CANCELLING_SUPERPOWER,
 )
 def test_add_another_token_and_bound_simple_token(first_token_fabric):
+    """
+    Adding an inactive superpower token to an already-created SimpleToken keeps both operands.
+
+    The resulting SimpleToken treats the right-hand SimpleToken as a real operand,
+    not as an inline temporary, and preserves the superpower token then the
+    SimpleToken by identity in left-to-right order.
+    """
     simple_token = SimpleToken()
     first_token = first_token_fabric()
 
@@ -1086,6 +1196,12 @@ def test_add_another_token_and_bound_simple_token(first_token_fabric):
     [x for x in ALL_TOKENS_FABRICS if x is not SimpleToken],
 )
 def test_add_bound_simple_token_and_another_token(second_token_fabric):
+    """
+    Preserve a bound left SimpleToken as the first nested operand.
+
+    Combining it with another concrete token should create a SimpleToken sum that
+    keeps both original operand objects by identity and in left-to-right order.
+    """
     simple_token = SimpleToken()
     second_token = second_token_fabric()
 
@@ -1102,6 +1218,12 @@ def test_add_bound_simple_token_and_another_token(second_token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_tokens_and_first_is_default_token(second_token_fabric):
+    """
+    Treat a left-hand DefaultToken as neutral when adding tokens.
+
+    The result remains a SimpleToken, but only the right-hand operand is nested
+    and it is preserved by identity.
+    """
     first_token = DefaultToken()
     second_token = second_token_fabric()
 
@@ -1117,6 +1239,11 @@ def test_add_tokens_and_first_is_default_token(second_token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_add_tokens_and_second_one_is_default_token(first_token_fabric):
+    """
+    Treat a right-hand DefaultToken as neutral in bound-token composition.
+
+    The sum is still a fresh SimpleToken, with only the original left token nested.
+    """
     first_token = first_token_fabric()
     second_token = DefaultToken()
 
@@ -1141,6 +1268,12 @@ def test_add_tokens_and_second_one_is_default_token(first_token_fabric):
     ],
 )
 def test_add_token_and_not_token(token_fabric, another_object):
+    """
+    Reject non-token operands on either side of token summation.
+
+    The token-left form owns the stable library error message, while reverse
+    addition only guarantees a TypeError because Python tries the non-token first.
+    """
     with pytest.raises(TypeError, match=r'Cancellation Token can only be combined with another Cancellation Token\.'):
         token_fabric() + another_object
 
@@ -1153,6 +1286,12 @@ def test_add_token_and_not_token(token_fabric, another_object):
     ALL_TOKENS_FABRICS,
 )
 def test_check_cancelled_token(token_fabric):
+    """
+    Manual cancellation makes every cancellable token raise the base error.
+
+    Repeated `check()` calls must keep reporting the directly cancelled token with
+    the generic `CancellationError`, not a token-specific superpower exception.
+    """
     token = token_fabric()
     token.cancel()
 
@@ -1170,6 +1309,12 @@ def test_check_cancelled_token(token_fabric):
     [*ALL_TOKENS_FABRICS, DefaultToken],
 )
 def test_check_superpower_not_raised(token_fabric):
+    """
+    Fresh public tokens pass `check()` while they are still active.
+
+    This covers regular tokens and `DefaultToken`, including token classes with no
+    superpower to trigger.
+    """
     token = token_fabric()
 
     assert token.check() is None
@@ -1184,6 +1329,12 @@ def test_check_superpower_not_raised(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_check_superpower_not_raised_nested(token_fabric_1, token_fabric_2):
+    """
+    Ensure parent check stays quiet when nested tokens are still active.
+
+    Guards nested traversal across regular token combinations whose own
+    superpowers have not triggered.
+    """
     token = token_fabric_1(token_fabric_2())
 
     assert token.check() is None
@@ -1198,6 +1349,12 @@ def test_check_superpower_not_raised_nested(token_fabric_1, token_fabric_2):
     ALL_TOKENS_FABRICS,
 )
 def test_check_cancelled_token_nested(token_fabric_1, token_fabric_2):
+    """
+    Parent check reports manual cancellation from the nested token.
+
+    The raised generic cancellation error keeps the nested token as its source,
+    including after the parent has cached the nested cancellation report.
+    """
     nested_token = token_fabric_1()
     token = token_fabric_2(nested_token)
     nested_token.cancel()
@@ -1216,6 +1373,7 @@ def test_check_cancelled_token_nested(token_fabric_1, token_fabric_2):
     [*ALL_TOKENS_FABRICS, DefaultToken],
 )
 def test_get_report_not_cancelled(token_fabric):
+    """Fresh top-level tokens return their own not-cancelled report."""
     token = token_fabric()
     report = token._get_report()
 
@@ -1229,6 +1387,11 @@ def test_get_report_not_cancelled(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_get_report_not_cancelled_nested(token_fabric):
+    """
+    A non-cancelled parent owns the report when its same-type child is also active.
+
+    The returned report should be attributed to the parent, not to the nested token.
+    """
     token = token_fabric(token_fabric())
     report = token._get_report()
 
@@ -1246,6 +1409,11 @@ def test_get_report_not_cancelled_nested(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_get_report_cancelled(token_fabric_1, token_fabric_2):
+    """
+    Nested manual cancellation owns the parent report.
+
+    A live parent returns the cancelled child report with CANCELLED cause and child attribution.
+    """
     nested_token = token_fabric_1()
     token = token_fabric_2(nested_token)
     nested_token.cancel()
@@ -1261,6 +1429,13 @@ def test_get_report_cancelled(token_fabric_1, token_fabric_2):
     [*ALL_TOKENS_FABRICS, DefaultToken],
 )
 def test_type_conversion_not_cancelled(token_fabric):
+    """
+    Fresh tokens are truthy in Python boolean contexts.
+
+    The shared boolean conversion follows the non-cancelled state, so every
+    fresh token, including the non-cancellable default token, supports direct
+    truth-value checks.
+    """
     token = token_fabric()
 
     assert token
@@ -1272,6 +1447,13 @@ def test_type_conversion_not_cancelled(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_type_conversion_cancelled(token_fabric):
+    """
+    Ensure pre-cancelled cancellable tokens are falsey.
+
+    This preserves the public `while token:` and `bool(token)` contract while
+    checking both implicit truth-value use and explicit `bool(token)`. DefaultToken
+    is intentionally excluded because it cannot be constructed cancelled.
+    """
     token = token_fabric(cancelled=True)
 
     assert not token
@@ -1296,6 +1478,12 @@ def test_type_conversion_cancelled(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_repr_if_nested_token_is_cancelled(token_fabric_1, token_fabric_2, cancelled_flag_nested_token, cancelled_flag_token):
+    """
+    Keep parent and nested `cancelled` repr markers independent.
+
+    The assertion strips the nested repr before checking the parent text, so each
+    parameterized flag is verified against the repr it belongs to.
+    """
     nested_token = token_fabric_1(cancelled=cancelled_flag_nested_token)
     token = token_fabric_2(nested_token, cancelled=cancelled_flag_token)
 
@@ -1320,6 +1508,12 @@ def test_repr_if_nested_token_is_cancelled(token_fabric_1, token_fabric_2, cance
     [*ALL_TOKENS_FABRICS, DefaultToken],
 )
 def test_wait_wrong_parameters(token_fabric, parameters):
+    """
+    Reject invalid wait timing parameters for every public token type.
+
+    Negative step, negative timeout, and step greater than timeout must raise
+    ValueError immediately, without pinning exact diagnostics or later wait behavior.
+    """
     token = token_fabric()
 
     with pytest.raises(ValueError, match=r'.'):
@@ -1331,6 +1525,13 @@ def test_wait_wrong_parameters(token_fabric, parameters):
     ALL_TOKENS_FABRICS,
 )
 def test_sync_wait_with_cancel(token_fabric):
+    """
+    Unbounded synchronous wait returns normally after another thread cancels the token.
+
+    The helper thread sleeps before calling cancel, so the elapsed-time check proves
+    `wait()` was called without a timeout and blocked until it observed that
+    cancellation instead of returning immediately.
+    """
     timeout = 0.001
     token = token_fabric()
 
@@ -1421,6 +1622,7 @@ def test_wait_without_timeout_returns_none(token_fabric):
     ALL_TOKENS_FABRICS,
 )
 def test_insert_default_token_to_another_tokens(token_fabric):
+    """Regular token constructors discard nested default tokens without changing type."""
     token = token_fabric(DefaultToken())
 
     assert not isinstance(token, DefaultToken)
@@ -1447,6 +1649,12 @@ def test_insert_default_token_to_another_tokens(token_fabric):
     ],
 )
 def test_report_cache_is_working_in_simple_case(first_token_fabric, second_token_fabric, action):
+    """
+    Cache a nested manual-cancellation report after any status check.
+
+    The cached report should describe the cancelled child and be reused by both
+    direct and indirect parent report reads.
+    """
     token = first_token_fabric(second_token_fabric(cancelled=True))
 
     assert token._cached_report is None
@@ -1484,6 +1692,13 @@ def test_report_cache_is_working_in_simple_case(first_token_fabric, second_token
     ],
 )
 def test_cache_is_using_after_self_flag(first_token_fabric, second_token_fabric, action):
+    """
+    Ensure parent cancellation takes precedence over a warmed nested report cache.
+
+    After the nested cache is populated, cancelling the parent should make direct
+    and indirect report checks return fresh manual-cancellation reports instead of
+    the cached nested report.
+    """
     token = first_token_fabric(second_token_fabric(cancelled=True))
 
     action(token)
@@ -1520,6 +1735,13 @@ def test_cache_is_using_after_self_flag(first_token_fabric, second_token_fabric,
     ],
 )
 def test_superpower_is_more_important_than_cache(first_token_fabric, second_token_fabric, action):
+    """
+    Ensure parent superpower and manual cancellation outrank nested cancellation.
+
+    The active parent superpower must be reported on both direct and indirect paths
+    despite the cancelled child. Later manual parent cancellation must then replace
+    that superpower report.
+    """
     token = first_token_fabric(second_token_fabric(cancelled=True))
 
     for report in token._get_report(True), token._get_report(False):
@@ -1550,6 +1772,12 @@ def test_superpower_is_more_important_than_cache(first_token_fabric, second_toke
     ALL_TOKENS_FABRICS,
 )
 def test_just_neste_simple_token_to_another_token(token_fabric):
+    """
+    A fresh SimpleToken passed to any regular token constructor remains nested.
+
+    The constructor should store exactly one nested token, that entry should be a
+    SimpleToken, and the parent should remain active.
+    """
     token = token_fabric(SimpleToken())
 
     assert len(token._tokens) == 1

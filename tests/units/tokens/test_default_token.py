@@ -7,6 +7,7 @@ from cantok import DefaultToken, ImpossibleCancelError, SimpleToken
 
 
 def test_dafault_token_is_not_cancelled_by_default():
+    """DefaultToken starts active across the public status API."""
     token = DefaultToken()
 
     assert bool(token)
@@ -18,6 +19,12 @@ def test_dafault_token_is_not_cancelled_by_default():
 
 
 def test_you_can_set_cancelled_attribute_as_false():
+    """
+    Allow assigning False to DefaultToken.cancelled as a no-op.
+
+    The token should still expose the never-cancelled state through every public
+    status API, and check() should not raise.
+    """
     token = DefaultToken()
 
     token.cancelled = False
@@ -31,6 +38,12 @@ def test_you_can_set_cancelled_attribute_as_false():
 
 
 def test_you_cant_set_true_as_cancelled_attribute():
+    """
+    Reject cancellation attempts made through the DefaultToken.cancelled setter.
+
+    Setting the attribute to True must raise ImpossibleCancelError and leave the
+    token uncancelled.
+    """
     token = DefaultToken()
 
     with pytest.raises(ImpossibleCancelError, match=match('You cannot cancel a default token.')):
@@ -40,6 +53,7 @@ def test_you_cant_set_true_as_cancelled_attribute():
 
 
 def test_you_cannot_cancel_default_token_by_standard_way():
+    """`DefaultToken.cancel()` raises without changing its permanent non-cancelled state."""
     token = DefaultToken()
 
     with pytest.raises(ImpossibleCancelError, match=match('You cannot cancel a default token.')):
@@ -49,6 +63,12 @@ def test_you_cannot_cancel_default_token_by_standard_way():
 
 
 def test_str_for_default_token():
+    """
+    `DefaultToken` stringifies as a regular, never-cancelled token.
+
+    Unlike the shared string test, this pins only the not-cancelled spelling because
+    a default token cannot transition to the cancelled state.
+    """
     assert str(DefaultToken()) == '<DefaultToken (not cancelled)>'
 
 
@@ -76,17 +96,29 @@ def test_repr_for_default_token():
 
 @pytest.mark.skipif(sys.version_info >= (3, 10), reason='Format of this exception messages was changed.')
 def test_you_cannot_neste_another_token_to_default_one_old_pythons():
+    """
+    DefaultToken rejects nested-token positional arguments with only the old TypeError text.
+
+    This old-Python compatibility case pins the unqualified `__init__()` wording;
+    the qualified new-Python wording is covered separately.
+    """
     with pytest.raises(TypeError, match=match('__init__() takes 1 positional argument but 2 were given')):
         DefaultToken(SimpleToken())
 
 
 @pytest.mark.skipif(sys.version_info < (3, 10), reason='Format of this exception messages was changed.')
 def test_you_cannot_neste_another_token_to_default_one_new_pythons():
+    """
+    Guard the Python 3.10+ TypeError for passing a nested token to DefaultToken.
+
+    DefaultToken only accepts keyword-only constructor arguments, so a positional nested token must be rejected with the newer qualified error message.
+    """
     with pytest.raises(TypeError, match=match('DefaultToken.__init__() takes 1 positional argument but 2 were given')):
         DefaultToken(SimpleToken())
 
 
 def test_default_plus_default():
+    """Two neutral DefaultToken operands produce an empty SimpleToken sum."""
     empty_sum = DefaultToken() + DefaultToken()
 
     assert isinstance(empty_sum, SimpleToken)
@@ -94,6 +126,7 @@ def test_default_plus_default():
 
 
 def test_default_plus_default_plus_default():
+    """Preserve the left-associative empty intermediate token in an inline all-default sum."""
     empty_sum = DefaultToken() + DefaultToken() + DefaultToken()
 
     assert isinstance(empty_sum, SimpleToken)
@@ -103,6 +136,12 @@ def test_default_plus_default_plus_default():
 
 
 def test_default_plus_default_plus_default_preserves_intermediate_simple_token():
+    """
+    A default-only SimpleToken intermediate remains a live operand in later sums.
+
+    Direct defaults are filtered from the first sum, but the bound intermediate must
+    be preserved by identity in the second sum and propagate its later cancellation.
+    """
     inner_sum = DefaultToken() + DefaultToken()
     total = inner_sum + DefaultToken()
 
@@ -116,6 +155,12 @@ def test_default_plus_default_plus_default_preserves_intermediate_simple_token()
 
 
 def test_default_token_plus_inline_simple_token():
+    """
+    DefaultToken is neutral when added to an inline SimpleToken.
+
+    The resulting sum is a SimpleToken with exactly one nested operand, and that
+    operand is the temporary non-default SimpleToken rather than the neutral default.
+    """
     total = DefaultToken() + SimpleToken()
 
     assert isinstance(total, SimpleToken)
@@ -124,6 +169,11 @@ def test_default_token_plus_inline_simple_token():
 
 
 def test_default_token_plus_bound_simple_token():
+    """
+    Treat a left-hand default token as neutral while preserving a bound simple token.
+
+    The sum is a fresh wrapper whose sole live operand is the preexisting simple token.
+    """
     simple_token = SimpleToken()
     total = DefaultToken() + simple_token
 
