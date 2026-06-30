@@ -79,8 +79,8 @@ class AbstractToken(ABC):
                 'doc': self.doc,
             },
             filters={
-                0: bool,
-                'cancelled': bool,
+                0: lambda argument: bool(argument),
+                'cancelled': lambda argument: bool(argument),
                 'doc': not_none,
             },
             placeholders={
