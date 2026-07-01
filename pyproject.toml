@@ -10,7 +10,7 @@ description = 'Implementation of the "Cancellation Token" pattern'
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    'printo>=0.0.28',
+    'printo>=0.0.29',
     'transfunctions>=0.0.12',
     'typing_extensions>=4.5.0 ; python_version < "3.13"',
 ]
