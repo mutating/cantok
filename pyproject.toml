@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cantok"
-version = "0.0.42"
+version = "0.0.43"
 authors = [{ name = "Evgeniy Blinov", email = "zheni-b@yandex.ru" }]
 description = 'Implementation of the "Cancellation Token" pattern'
 readme = "README.md"
