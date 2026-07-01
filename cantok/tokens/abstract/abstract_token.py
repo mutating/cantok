@@ -71,7 +71,7 @@ class AbstractToken(ABC):
         cancelled = report.from_token is self and report.cause == CancelCause.CANCELLED
 
         return describe_call(
-            type(self).__name__,
+            type(self),
             [superpower, *self._tokens],
             {
                 'cancelled': cancelled,
