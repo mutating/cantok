@@ -6,8 +6,17 @@ from full_match import match
 from cantok import DefaultToken, ImpossibleCancelError, SimpleToken
 
 
-def test_dafault_token_is_not_cancelled_by_default():
-    """DefaultToken starts active across the public status API."""
+@pytest.mark.parametrize(
+    'check',
+    [
+        lambda token: token.check(),
+        lambda token: token.check(exception=None),
+        lambda token: token.check(exception=UnicodeDecodeError),
+        lambda token: token.check(exception=RuntimeError('unused')),
+    ],
+)
+def test_default_token_is_not_cancelled_by_default(check):
+    """`DefaultToken` starts active, and every supported `check()` call returns `None`."""
     token = DefaultToken()
 
     assert bool(token)
@@ -15,15 +24,24 @@ def test_dafault_token_is_not_cancelled_by_default():
     assert token.is_cancelled() == False
     assert token.keep_on() == True
 
-    token.check()
+    assert check(token) is None
 
 
-def test_you_can_set_cancelled_attribute_as_false():
+@pytest.mark.parametrize(
+    'check',
+    [
+        lambda token: token.check(),
+        lambda token: token.check(exception=None),
+        lambda token: token.check(exception=UnicodeDecodeError),
+        lambda token: token.check(exception=RuntimeError('unused')),
+    ],
+)
+def test_you_can_set_cancelled_attribute_as_false(check):
     """
-    Allow assigning False to DefaultToken.cancelled as a no-op.
+    Setting `DefaultToken.cancelled` to `False` is a no-op.
 
-    The token should still expose the never-cancelled state through every public
-    status API, and check() should not raise.
+    All status APIs still report an active token, and every supported `check()`
+    call returns `None`.
     """
     token = DefaultToken()
 
@@ -34,32 +52,57 @@ def test_you_can_set_cancelled_attribute_as_false():
     assert token.is_cancelled() == False
     assert token.keep_on() == True
 
-    token.check()
+    assert check(token) is None
 
 
-def test_you_cant_set_true_as_cancelled_attribute():
+@pytest.mark.parametrize(
+    'check',
+    [
+        lambda token: token.check(),
+        lambda token: token.check(exception=None),
+        lambda token: token.check(exception=UnicodeDecodeError),
+        lambda token: token.check(exception=RuntimeError('unused')),
+    ],
+)
+def test_you_cant_set_true_as_cancelled_attribute(check):
     """
-    Reject cancellation attempts made through the DefaultToken.cancelled setter.
+    Setting `DefaultToken.cancelled` to `True` raises `ImpossibleCancelError`.
 
-    Setting the attribute to True must raise ImpossibleCancelError and leave the
-    token uncancelled.
+    The token remains active, so every supported `check()` call returns `None`.
     """
     token = DefaultToken()
 
-    with pytest.raises(ImpossibleCancelError, match=match('You cannot cancel a default token.')):
+    with pytest.raises(ImpossibleCancelError, match=match('You cannot cancel a default token.')) as exc_info:
         token.cancelled = True
 
+    assert type(exc_info.value) is ImpossibleCancelError
     assert token.cancelled == False
+    assert check(token) is None
 
 
-def test_you_cannot_cancel_default_token_by_standard_way():
-    """`DefaultToken.cancel()` raises without changing its permanent non-cancelled state."""
+@pytest.mark.parametrize(
+    'check',
+    [
+        lambda token: token.check(),
+        lambda token: token.check(exception=None),
+        lambda token: token.check(exception=UnicodeDecodeError),
+        lambda token: token.check(exception=RuntimeError('unused')),
+    ],
+)
+def test_you_cannot_cancel_default_token_by_standard_way(check):
+    """
+    `DefaultToken.cancel()` raises `ImpossibleCancelError`.
+
+    The token remains active, and every supported `check()` call returns `None`.
+    """
     token = DefaultToken()
 
-    with pytest.raises(ImpossibleCancelError, match=match('You cannot cancel a default token.')):
+    with pytest.raises(ImpossibleCancelError, match=match('You cannot cancel a default token.')) as exc_info:
         token.cancel()
 
+    assert type(exc_info.value) is ImpossibleCancelError
     assert token.cancelled == False
+    assert check(token) is None
 
 
 def test_str_for_default_token():

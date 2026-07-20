@@ -30,6 +30,7 @@ ALL_NOT_CANCELLING_ARGUMENTS_FOR_TOKEN_CLASSES_WITH_SUPERPOWERS = [(lambda: Fals
 ALL_TOKENS_FABRICS = [partial(token_class, *arguments) for token_class, arguments in zip(ALL_TOKEN_CLASSES, ALL_ARGUMENTS_FOR_TOKEN_CLASSES)]
 ALL_TOKENS_FABRICS_WITH_CANCELLING_SUPERPOWER = [partial(token_class, *arguments) for token_class, arguments in zip(ALL_SUPERPOWER_TOKEN_CLASSES, ALL_CANCELLING_ARGUMENTS_FOR_TOKEN_CLASSES_WITH_SUPERPOWERS)]
 ALL_TOKENS_FABRICS_WITH_NOT_CANCELLING_SUPERPOWER = [partial(token_class, *arguments) for token_class, arguments in zip(ALL_SUPERPOWER_TOKEN_CLASSES, ALL_NOT_CANCELLING_ARGUMENTS_FOR_TOKEN_CLASSES_WITH_SUPERPOWERS)]
+ALL_TOKENS_FABRICS_WITH_MANUAL_CANCELLATION = [partial(token_fabric, cancelled=True) for token_fabric in ALL_TOKENS_FABRICS]
 
 
 def test_cant_instantiate_abstract_token():
@@ -276,22 +277,45 @@ def test_str_with_doc_is_unchanged_for_superpower_cancelled_tokens(token_fabric)
     'token_fabric',
     ALL_TOKENS_FABRICS,
 )
-def test_manual_cancellation_message_includes_doc_only_when_present(token_fabric, doc_kwargs, expected_suffix):
+@pytest.mark.parametrize(
+    'check_kwargs',
+    [
+        {},
+        {'exception': None},
+        {'exception': RuntimeError},
+        {'exception': SystemExit},
+    ],
+)
+def test_manual_cancellation_message_includes_doc_only_when_present(
+    token_fabric,
+    doc_kwargs,
+    expected_suffix,
+    check_kwargs,
+):
     """
-    Manual cancellation messages append `doc` only when it is present.
+    Include `doc` in manual cancellation messages only when it is present.
 
-    Omitted `doc` and explicit `None` keep the old exact message; valid text
-    adds the shared token-description suffix while preserving token identity
-    and surrounding whitespace.
+    Omitting `doc` or passing `doc=None` preserves the original message;
+    otherwise its text appears verbatim in the suffix. `check()` and
+    `check(exception=None)` raise the standard exception with its source token.
+    Exception class overrides carry the same message without a
+    `.token` attribute.
     """
     token = token_fabric(**doc_kwargs)
     token.cancel()
+    expected_message = 'The token has been cancelled.' + expected_suffix
+    exception_class_override = check_kwargs.get('exception')
+    expected_exception_class = CancellationError if exception_class_override is None else exception_class_override
 
-    with pytest.raises(CancellationError, match=match('The token has been cancelled.' + expected_suffix)) as exc_info:
-        token.check()
+    with pytest.raises(expected_exception_class, match=match(expected_message)) as exc_info:
+        token.check(**check_kwargs)
 
-    assert type(exc_info.value) is CancellationError
-    assert exc_info.value.token is token
+    assert type(exc_info.value) is expected_exception_class
+    assert exc_info.value.args == (expected_message, )
+    if issubclass(expected_exception_class, CancellationError):
+        assert exc_info.value.token is token
+    else:
+        assert not hasattr(exc_info.value, 'token')
 
 
 @pytest.mark.parametrize(
@@ -336,19 +360,37 @@ def test_manual_cancellation_message_overrides_active_superpower_with_optional_d
 )
 def test_superpower_and_impossible_cancel_messages_include_doc_only_when_present(doc_kwargs, expected_suffix):
     """
-    Type-specific cancellation messages append `doc` only when it is present.
+    Append `doc` to type-specific cancellation messages only when present.
 
-    The same suffix rule is fixed for Condition, Counter, Timeout, and both
-    `DefaultToken` impossible-cancel paths.
+    This covers Condition, Counter, Timeout, and both `DefaultToken`
+    impossible-cancel paths. For superpower cancellation, `check()` and
+    `check(exception=None)` raise the standard exception with its source token.
+    Exceptions from ordinary class overrides keep the message without `.token`.
     """
     for token_fabric in ALL_TOKENS_FABRICS_WITH_CANCELLING_SUPERPOWER:
         token = token_fabric(**doc_kwargs)
+        expected_message = token._get_superpower_exception_message() + expected_suffix
 
-        with pytest.raises(token.exception, match=match(token._get_superpower_exception_message() + expected_suffix)) as exc_info:
+        with pytest.raises(token.exception, match=match(expected_message)) as exc_info:
             token.check()
 
         assert type(exc_info.value) is token.exception
+        assert exc_info.value.args == (expected_message, )
         assert exc_info.value.token is token
+
+        with pytest.raises(token.exception, match=match(expected_message)) as exc_info:
+            token.check(exception=None)
+
+        assert type(exc_info.value) is token.exception
+        assert exc_info.value.args == (expected_message, )
+        assert exc_info.value.token is token
+
+        with pytest.raises(RuntimeError, match=match(expected_message)) as exc_info:
+            token.check(exception=RuntimeError)
+
+        assert type(exc_info.value) is RuntimeError
+        assert exc_info.value.args == (expected_message, )
+        assert not hasattr(exc_info.value, 'token')
 
     expected_impossible_message = match('You cannot cancel a default token.' + expected_suffix)
     token = DefaultToken(**doc_kwargs)
@@ -387,22 +429,51 @@ def test_superpower_and_impossible_cancel_messages_include_doc_only_when_present
     'parent_token_fabric',
     ALL_TOKENS_FABRICS,
 )
-def test_nested_cancellation_message_uses_causing_token_doc(parent_token_fabric, nested_token_fabric, doc_case):
+@pytest.mark.parametrize(
+    'check_kwargs',
+    [
+        {},
+        {'exception': None},
+        {'exception': RuntimeError},
+        {
+            'exception': type(
+                'CancellationErrorSubclass',
+                (CancellationError,),
+                {},
+            ),
+        },
+    ],
+)
+def test_nested_cancellation_message_uses_causing_token_doc(
+    parent_token_fabric,
+    nested_token_fabric,
+    doc_case,
+    check_kwargs,
+):
     """
-    Nested cancellation messages describe the token that caused cancellation.
+    Use the actual nested source in cancellation messages.
 
-    Parent `doc` must not leak into the message when a nested token is the
-    cancellation source.
+    Parent `doc` never leaks. Exceptions raised by `check()` and
+    `check(exception=None)`, or created from a `CancellationError` subclass,
+    retain the nested source token. An ordinary class override produces the
+    same message without `.token`.
     """
     doc, expected_suffix = doc_case
     nested_token = nested_token_fabric(doc=doc)
     token = parent_token_fabric(nested_token, doc='parent-doc')
+    expected_message = nested_token._get_superpower_exception_message() + expected_suffix
+    exception_class_override = check_kwargs.get('exception')
+    expected_exception_class = nested_token.exception if exception_class_override is None else exception_class_override
 
-    with pytest.raises(nested_token.exception, match=match(nested_token._get_superpower_exception_message() + expected_suffix)) as exc_info:
-        token.check()
+    with pytest.raises(expected_exception_class, match=match(expected_message)) as exc_info:
+        token.check(**check_kwargs)
 
-    assert type(exc_info.value) is nested_token.exception
-    assert exc_info.value.token is nested_token
+    assert type(exc_info.value) is expected_exception_class
+    assert exc_info.value.args == (expected_message, )
+    if issubclass(expected_exception_class, CancellationError):
+        assert exc_info.value.token is nested_token
+    else:
+        assert not hasattr(exc_info.value, 'token')
 
 
 @pytest.mark.parametrize(
@@ -1306,18 +1377,216 @@ def test_check_cancelled_token(token_fabric):
 
 @pytest.mark.parametrize(
     'token_fabric',
-    [*ALL_TOKENS_FABRICS, DefaultToken],
+    ALL_TOKENS_FABRICS,
 )
-def test_check_superpower_not_raised(token_fabric):
+@pytest.mark.parametrize(
+    'check_kwargs',
+    [
+        {},
+        {'exception': None},
+        {'exception': UnicodeDecodeError},
+        {
+            'exception': type(
+                'NonInstantiableCancellationError',
+                (CancellationError,),
+                {'__new__': staticmethod(len)},
+            ),
+        },
+    ],
+)
+def test_check_returns_none_without_instantiating_exception_classes_for_active_token(
+    token_fabric,
+    check_kwargs,
+):
     """
-    Fresh public tokens pass `check()` while they are still active.
+    For active regular tokens, `check()` returns `None` without instantiating
+    exception classes.
 
-    This covers regular tokens and `DefaultToken`, including token classes with no
-    superpower to trigger.
+    This covers an omitted `exception`, explicit `None`, an ordinary exception
+    class, and a `CancellationError` subclass.
     """
     token = token_fabric()
 
-    assert token.check() is None
+    assert token.check(**check_kwargs) is None
+
+
+@pytest.mark.parametrize(
+    'token_fabric',
+    ALL_TOKENS_FABRICS,
+)
+@pytest.mark.parametrize(
+    'exception_fabric',
+    [
+        partial(RuntimeError, 'unused'),
+        lambda: type(
+            'CancellationErrorSubclass',
+            (CancellationError,),
+            {},
+        )('unused', SimpleToken()),
+    ],
+)
+def test_check_does_not_modify_or_raise_exception_instance_for_active_token(
+    token_fabric,
+    exception_fabric,
+):
+    """
+    Active regular tokens leave supplied exception objects untouched.
+
+    `check()` returns `None` without raising the object or changing its
+    traceback, arguments, custom state, or `.token` attribute. A local sentinel
+    represents a missing `.token`, so one identity assertion covers both its
+    continued absence and preservation of an existing source token.
+    """
+    token = token_fabric()
+    exception = exception_fabric()
+    exception.marker = 'preserved'
+    original_args = exception.args
+    missing_token = object()
+    original_source_token = getattr(exception, 'token', missing_token)
+
+    assert exception.__traceback__ is None
+    assert token.check(exception=exception) is None
+    assert exception.__traceback__ is None
+    assert exception.args == original_args
+    assert exception.marker == 'preserved'
+    assert getattr(exception, 'token', missing_token) is original_source_token
+
+
+@pytest.mark.parametrize(
+    'token_fabric',
+    [
+        *ALL_TOKENS_FABRICS_WITH_CANCELLING_SUPERPOWER,
+        partial(SimpleToken, cancelled=True),
+    ],
+)
+@pytest.mark.parametrize(
+    'exception_fabric',
+    [
+        partial(RuntimeError, 'custom message'),
+        lambda: type(
+            'FalsyBaseException',
+            (BaseException,),
+            {'__bool__': lambda _self: False},
+        )('custom message'),
+        lambda: type(
+            'CancellationErrorSubclass',
+            (CancellationError,),
+            {},
+        )('custom message', SimpleToken(doc='original-source')),
+    ],
+)
+def test_check_raises_passed_exception_instance_as_is(token_fabric, exception_fabric):
+    """
+    Raise the supplied instance for manual and superpower cancellation.
+
+    An ordinary exception, a falsy instance derived directly from
+    `BaseException`, and a `CancellationError` preserve identity, arguments,
+    and custom state. A local sentinel represents a missing `.token`, allowing
+    one identity assertion to prove that `CancellationError` retains its source
+    token while the other exceptions do not gain the attribute.
+    """
+    token = token_fabric()
+    exception = exception_fabric()
+    exception.marker = 'preserved'
+    missing_token = object()
+    original_source_token = getattr(exception, 'token', missing_token)
+
+    assert original_source_token is not token
+
+    with pytest.raises(type(exception)) as exc_info:
+        token.check(exception=exception)
+
+    assert exc_info.value is exception
+    assert exc_info.value.args == ('custom message', )
+    assert exc_info.value.marker == 'preserved'
+    assert getattr(exc_info.value, 'token', missing_token) is original_source_token
+
+
+@pytest.mark.parametrize(
+    'token_fabric',
+    [
+        *ALL_TOKENS_FABRICS_WITH_MANUAL_CANCELLATION,
+        DefaultToken,
+    ],
+)
+@pytest.mark.parametrize(
+    'invalid_exception',
+    [
+        0,
+        object,
+    ],
+)
+def test_check_rejects_invalid_exception_regardless_of_token_state(token_fabric, invalid_exception):
+    """
+    Reject invalid exception values regardless of token state.
+
+    Manually cancelled regular tokens and the permanently active `DefaultToken`
+    all raise the same `ValueError`, including its exact message.
+    """
+    token = token_fabric()
+
+    with pytest.raises(
+        ValueError,
+        match=match('Only an exception instance or an exception class can be passed.'),
+    ) as exc_info:
+        token.check(exception=invalid_exception)
+
+    assert type(exc_info.value) is ValueError
+
+
+@pytest.mark.parametrize(
+    'token_class',
+    [
+        ConditionToken,
+        CounterToken,
+    ],
+)
+@pytest.mark.parametrize(
+    'invalid_exception',
+    [
+        0,
+        object,
+    ],
+)
+def test_check_validates_exception_before_polling_token(token_class, invalid_exception):
+    """
+    Validate invalid exception overrides before token-specific polling.
+
+    A ConditionToken callback is not invoked and a CounterToken attempt is not
+    consumed when check() rejects its exception argument.
+    """
+    condition_calls = []
+
+    def condition():
+        condition_calls.append(None)
+        return False
+
+    token = token_class(condition) if token_class is ConditionToken else token_class(5)
+
+    with pytest.raises(
+        ValueError,
+        match=match('Only an exception instance or an exception class can be passed.'),
+    ) as exc_info:
+        token.check(exception=invalid_exception)
+
+    assert type(exc_info.value) is ValueError
+
+    if token_class is ConditionToken:
+        assert condition_calls == []
+    else:
+        assert token.counter == 5
+
+
+@pytest.mark.parametrize(
+    'token_fabric',
+    [*ALL_TOKENS_FABRICS, DefaultToken],
+)
+def test_check_rejects_positional_exception(token_fabric):
+    """Require exception overrides to be passed by keyword for every token."""
+    token = token_fabric()
+
+    with pytest.raises(TypeError):
+        token.check(ValueError)
 
 
 @pytest.mark.parametrize(
