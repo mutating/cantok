@@ -32,6 +32,18 @@ Each type of token (except [`DefaultToken`](../types_of_tokens/DefaultToken.md))
 
 When you call the `check()` method on any token, one of two things will happen. If it (or any of the tokens nested in it) has been cancelled by calling the `cancel()` method, `CancellationError` will always be raised. But if the cancellation occurred as a result of the unique ability of the token, such as timeout expiration for `TimeoutToken`, then an exception specific to this type of token will be raised.
 
+`check()` also accepts a keyword-only `exception` argument. Omit it or pass `None` to keep the behavior described above. Pass an exception class, and `check()` raises an instance of it with the standard message for the cancellation cause; pass an existing exception object, and `check()` raises that object as is. If the token is not cancelled, `check()` still does nothing and the override is not used.
+
+```python
+from cantok import SimpleToken
+
+token = SimpleToken()
+token.cancel()
+token.check(exception=RuntimeError)
+#> ...
+#> RuntimeError: The token has been cancelled.
+```
+
 `ConditionCancellationError`, `TimeoutCancellationError`, and `CounterCancellationError` are inherited from `CancellationError`, so if you're not sure which specific exception you're catching, catch `CancellationError`. All of the listed exceptions can also be imported separately:
 
 ```python
