@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from threading import RLock
 from time import sleep
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 from printo import describe_call, not_none
 
@@ -71,7 +71,7 @@ class AbstractToken(ABC):
         cancelled = report.from_token is self and report.cause == CancelCause.CANCELLED
 
         return describe_call(
-            type(self).__name__,
+            type(self),
             [superpower, *self._tokens],
             {
                 'cancelled': cancelled,
@@ -222,7 +222,7 @@ class AbstractToken(ABC):
         self._cancelled = True
         return self
 
-    def check(self) -> None:
+    def check(self, *, exception: Optional[Union[Type[BaseException], BaseException]] = None) -> None:
         """
         Raises an exception if the token is cancelled; does nothing otherwise.
 
@@ -231,19 +231,47 @@ class AbstractToken(ABC):
         - Automatic cancellation by a specific token type raises the corresponding
           subclass (e.g. TimeoutCancellationError for TimeoutToken).
 
+        :param exception: Optional keyword-only exception class or instance used
+                          instead of the standard cancellation exception. A class
+                          receives the standard cancellation message; an instance
+                          is raised as is.
+        :raises ValueError: If exception is neither an exception class nor instance.
+
         >>> token = SimpleToken()
         >>> token.check()   # nothing happens
         >>> token.cancel()
         >>> token.check()   # raises CancellationError
         """
+        if exception is not None and not (
+            isinstance(exception, BaseException)
+            or (isinstance(exception, type) and issubclass(exception, BaseException))
+        ):
+            raise ValueError('Only an exception instance or an exception class can be passed.')
+
         with self._lock:
             report = self._get_report()
 
-            if report.cause == CancelCause.CANCELLED:
-                report.from_token._raise_cancelled_exception()
+            if exception is None:
+                if report.cause == CancelCause.CANCELLED:
+                    report.from_token._raise_cancelled_exception()
 
-            elif report.cause == CancelCause.SUPERPOWER:
-                report.from_token._raise_superpower_exception()
+                elif report.cause == CancelCause.SUPERPOWER:
+                    report.from_token._raise_superpower_exception()
+
+            elif report.cause != CancelCause.NOT_CANCELLED:
+                if isinstance(exception, BaseException):
+                    raise exception
+
+                message = (
+                    'The token has been cancelled.'
+                    if report.cause == CancelCause.CANCELLED
+                    else report.from_token._get_superpower_exception_message()
+                ) + report.from_token._get_exception_message_suffix()
+
+                if issubclass(exception, CancellationError):
+                    raise exception(message, report.from_token)
+
+                raise exception(message)
 
     def _get_report(self, direct: bool = True) -> CancellationReport:
         if self._cancelled:

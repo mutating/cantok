@@ -218,12 +218,15 @@ def test_get_report_cancelled_nested(counter, counter_nested, from_token_is_nest
 
 
 @pytest.mark.parametrize(
-    'function',
+    ('poll', 'expected_exception_type'),
     [
-        lambda token: token.check(),
-        lambda token: token.is_cancelled(),
-        lambda token: token.cancelled,
-        lambda token: token.keep_on(),
+        (lambda token: token.check(), CounterCancellationError),
+        (lambda token: token.check(exception=None), CounterCancellationError),
+        (lambda token: token.check(exception=RuntimeError), RuntimeError),
+        (lambda token: token.check(exception=RuntimeError('custom message')), RuntimeError),
+        (lambda token: token.is_cancelled(), None),
+        (lambda token: token.cancelled, None),
+        (lambda token: token.keep_on(), None),
     ],
 )
 @pytest.mark.parametrize(
@@ -235,15 +238,39 @@ def test_get_report_cancelled_nested(counter, counter_nested, from_token_is_nest
         (0, 0),
     ],
 )
-def test_check_is_decrementing_counter(function, initial_counter, final_counter):
-    """Direct CounterToken checks consume one attempt without decrementing below zero."""
+def test_direct_status_operations_poll_counter_once(
+    poll,
+    expected_exception_type,
+    initial_counter,
+    final_counter,
+):
+    """
+    Poll the counter once for each tested direct status operation.
+
+    `check()` covers omitted, `None`, class, and instance exception forms
+    alongside `is_cancelled()`, `cancelled`, and `keep_on()`. Positive counters
+    decrement once and zero remains zero. At zero, `check()` raises the exact
+    expected class while the other operations do not raise.
+    """
     token = CounterToken(initial_counter)
+    poll_calls = []
+    original_get_report = token._get_report
 
-    try:
-        function(token)
-    except CounterCancellationError:
-        pass
+    def record_poll_and_get_report(*args, **kwargs):
+        poll_calls.append(None)
+        return original_get_report(*args, **kwargs)
 
+    token._get_report = record_poll_and_get_report
+
+    if initial_counter == 0 and expected_exception_type is not None:
+        with pytest.raises(expected_exception_type) as exc_info:
+            poll(token)
+
+        assert type(exc_info.value) is expected_exception_type
+    else:
+        poll(token)
+
+    assert poll_calls == [None]
     assert token.counter == final_counter
 
 
